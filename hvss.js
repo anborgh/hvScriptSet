@@ -2,13 +2,12 @@
 
 /**
  * hvScriptSet
- * Version: 1.0.22
+ * Version: 1.0.23
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. При удалении маски требуется подтверждение намерений
- * 2. Поставлена защита от переполнения хранилища
+ * 1. Фикс адресов сохранённых аватаров с forumupload.ru на upforme.ru
  */
 
 const hvScriptSet = {
@@ -1097,8 +1096,11 @@ const hvScriptSet = {
 
       data.forEach(str => {
         try {
-          JSON.parse(str);
-          result.push(str);
+          // в 2025 году внутренний хостинг файлов mybb сменился, фикс автоматически заменяет ссылки
+          const cleanSrt = str
+            .replace(/https?:\/\/forumupload.ru\//gi, 'https://upforme.ru/');
+          JSON.parse(cleanSrt);
+          result.push(cleanSrt);
         } catch (e) {
           console.error(`hvScriptSet: Маска неверно сохранилась и была удалена. Текст: ${str}`);
         }
