@@ -2,18 +2,18 @@
 
 /**
  * hvScriptSet
- * Version: 1.0.21
+ * Version: 1.0.22
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. Последние сохранённые маски теперь сверху списка
- * 2. Исправлен баг сокрытия старых масок на странице поиска
- * 3. Убрал кнопку "Вставить без сохранения". Пишите протест, если по ней скучаете
- * 4. Появилась суперсекретная настройка disableQuote: true, которая ставит в цитаты и ответы реальный ник
+ * 1. При удалении маски требуется подтверждение намерений
+ * 2. Поставлена защита от переполнения хранилища
  */
 
 const hvScriptSet = {
+
+  data: {},
 
   addMask: function (opt) {
     if (!opt) {
@@ -29,6 +29,8 @@ const hvScriptSet = {
     ) {
       return;
     }
+
+    const that = this;
 
     const changeList = {
       'author': {
@@ -61,6 +63,7 @@ const hvScriptSet = {
       },
       ...opt.changeList
     };
+    that.data.changeList = changeList;
 
     if (window.GroupID === 1) {
       saveMaskSettings(opt);
@@ -115,6 +118,9 @@ const hvScriptSet = {
         }
       }
       let checkAccess = changedUsersId.length > 0 ? getAccess(changedUsersId) : {};
+
+      that.data.changedPosts = changedPosts;
+
       for (let _i in changedPosts) {
         if (changedPosts.hasOwnProperty(_i)) {
           changedPosts[_i].username = checkAccess[changedPosts[_i].userId].username;
@@ -181,11 +187,13 @@ const hvScriptSet = {
                     console.error(`Что-то не так с маской в посте #${changedPosts[_i].postId}`);
                     if (window.GroupID === 1 || window.GroupID === 2) {
                       let errorMess = document.getElementById('admin_msg1');
-                      errorMess.innerHTML = `Что-то не так с маской в посте #${changedPosts[_i].postId}. Он подсвечен красным.<br><i>Сообщение показано только администрации.</i>`;
-                      errorMess.style.display = 'block';
-                      errorMess.style.zIndex = 10000;
+                      if (errorMess) {
+                        errorMess.innerHTML = `Что-то не так с маской в посте #${changedPosts[_i].postId}. Он подсвечен красным.<br><i>Сообщение показано только администрации.</i>`;
+                        errorMess.style.display = 'block';
+                        errorMess.style.zIndex = 10000;
+                      };
                       document.getElementById(changedPosts[_i].postId)
-                        .style.border = 'solid 1px #f00';
+                          .style.border = 'solid 1px #f00';
                     }
                   }
                   fieldEl.innerHTML = content.length > 999 ? content.slice(0, 999) : content;
@@ -264,7 +272,7 @@ const hvScriptSet = {
         const text = post.querySelector('.post-content');
         allTagsList.forEach(tag => {
           let pattern =
-              new RegExp('\\[' + tag + '\\](.*?)\\[\/' + tag + '\\]', 'gi');
+            new RegExp('\\[' + tag + '\\](.*?)\\[\/' + tag + '\\]', 'gi');
           text.innerHTML = text.innerHTML.replace(pattern, '');
         })
       })
@@ -344,11 +352,11 @@ const hvScriptSet = {
               break;
             default:
               const isCommonAccess = opt.forumAccess && opt.forumAccess[forumName]
-                  ? opt.forumAccess[forumName].includes(userInfo[id].groupTitle)
-                  : true
+                ? opt.forumAccess[forumName].includes(userInfo[id].groupTitle)
+                : true
               const isExtendedAccess = opt.forumAccessExtended && opt.forumAccessExtended[forumName]
-                  ? opt.forumAccessExtended[forumName].includes(userInfo[id].groupTitle)
-                  : false
+                ? opt.forumAccessExtended[forumName].includes(userInfo[id].groupTitle)
+                : false
               userInfo[id].access = {
                 'common': isExtendedAccess || isCommonAccess,
                 'extended': isExtendedAccess
@@ -744,6 +752,13 @@ const hvScriptSet = {
       okButton.value = 'Вставить маску';
       okButton.addEventListener('click', saveMask);
 
+      let insertButton = document.createElement('input');
+      insertButton.type = 'button';
+      insertButton.className = 'button';
+      insertButton.name = 'insertMask';
+      insertButton.value = 'Вставить без сохранения';
+      insertButton.addEventListener('click', insertMask);
+
       let clearButton = document.createElement('input');
       clearButton.type = 'button';
       clearButton.className = 'button';
@@ -761,6 +776,7 @@ const hvScriptSet = {
       let control = document.createElement('div');
       control.className = 'hv-control';
       control.appendChild(okButton);
+      control.appendChild(insertButton);
       control.appendChild(clearButton);
       control.appendChild(cancelButton);
 
@@ -795,7 +811,7 @@ const hvScriptSet = {
           if (changeList.hasOwnProperty(item) && item !== 'avatar' && mymask[item]) {
             if (!checkHtml(mymask[item].value.toString())) {
               infoBlock += '<div class="' + item + '"><b>' + changeList[item].title + ':</b> ' +
-              mymask[item].value + '</div>';
+                mymask[item].value + '</div>';
             }
           }
         }
@@ -808,14 +824,14 @@ const hvScriptSet = {
         li.appendChild(avatar);
         if ((mymask['avatar'] && Object.keys(mymask).length > 1) ||
           (!mymask['avatar'] && Object.keys(mymask).length > 0)) {
-            li.dataset.content = infoBlock;
-            $(li).tipsy({
-              title: function() { return `<div class="hv-mask-tipsy">${this.getAttribute('data-content')}</div>`; },
-              fade: true,
-              html: true,
-              gravity: 'e',
-              className: 'hv-mask-tooltipsy'
-            });
+          li.dataset.content = infoBlock;
+          $(li).tipsy({
+            title: function() { return `<div class="hv-mask-tipsy">${this.getAttribute('data-content')}</div>`; },
+            fade: true,
+            html: true,
+            gravity: 'e',
+            className: 'hv-mask-tooltipsy'
+          });
         } else {
           $(li).tipsy();
         }
@@ -851,24 +867,31 @@ const hvScriptSet = {
           }
         }
         prevMasks.push(JSON.stringify(tmpMask));
+
+        const value = encodeURI(prevMasks.join('|splitKey|'));
+        if (value.length >= 65500) {
+          $.jGrowl("Хранилище масок переполнено, не могу сохранить ещё маску 😔");
+          throw new Error('Ошибка сохранения');
+        }
+
         $.post('/api.php',
           {
             method: 'storage.set',
             token: window.ForumAPITicket,
             key: 'maskListUser',
-            value: encodeURI(prevMasks.join('|splitKey|'))
+            value,
           }
         )
-        .done(function() {
-          insert(getStrMask());
-          getMaskStorage(prevMasks);
-          clearMask();
-          hideMaskDialog();
-        })
-        .fail(function() {
-          errorList.common = 'Ошибка сохранения, попробуй ещё раз.';
-          showErrors();
-        });
+          .done(function() {
+            insert(getStrMask());
+            getMaskStorage(prevMasks);
+            clearMask();
+            hideMaskDialog();
+          })
+          .fail(function() {
+            errorList.common = 'Ошибка сохранения, попробуй ещё раз.';
+            showErrors();
+          });
       }
     }
 
@@ -896,6 +919,10 @@ const hvScriptSet = {
     }
 
     function deleteMaskFromStorage(mask, li) {
+      const isConfirmed = confirm('Точно удалить маску?');
+
+      if (!isConfirmed) return;
+
       if ($(li).tipsy('getTitle')) {
         $(li).tipsy('hide');
       }
@@ -965,8 +992,8 @@ const hvScriptSet = {
     }
 
     const forbiddenTags = ['input', 'button', 'script', 'iframe', 'frame', 'style', 'audio', 'video', 'form',
-      'footer', 'header', 'head', 'html', 'map', 'select', 'textarea', 'xmp', 'object', 'embed',
-      'var', 'meta'];
+      'footer', 'header', 'head', 'html', 'map', 'select', 'textarea', 'xmp', 'object', 'embed', 'noembed',
+      'var', 'meta', 'animate','xss','main','aside','dialog','noscript','noframes','title','set','use','base','math'];
     const forbiddenEvents = ['onblur', 'onchange', 'onclick', 'ondblclick', 'onfocus', 'onkeydown', 'onkeypress',
       'onkeyup', 'onload', 'onmousedown', 'onmousemove', 'onmouseout', 'onmouseover', 'onmouseup', 'onreset',
       'onselect', 'onscroll', 'onsubmit', 'onunload', 'javascript', 'onerror', 'oninput', 'onafterprint',
@@ -976,7 +1003,14 @@ const hvScriptSet = {
       'onmousewheel', 'onwheel', 'oncopy', 'oncut', 'onpaste', 'onabort', 'oncanplay', 'oncanplaythrough',
       'oncuechange', 'ondurationchange', 'onemptied', 'onended', 'onerror', 'onloadeddata', 'onloadedmetadata',
       'onloadstart', 'onpause', 'onplay', 'onplaying', 'onprogress', 'onratechange', 'onseeked', 'onseeking',
-      'onstalled', 'onsuspend', 'ontimeupdate', 'onvolumechange', 'onwaiting'];
+      'onstalled', 'onsuspend', 'ontimeupdate', 'onvolumechange', 'onwaiting','onbegin','onanimationend',
+      'onanimationiteration','onbeforescriptexecute','onbounce','onend','onfocusin','onloadmetadata','onrepeat',
+      'onscrollend','ontoggle','ontransitioncancel','ontransitionend','ontransitionrun','ontransitionstart',
+      'onunhandledrejection','onwebkitanimationend','onwebkitanimationiteration','onwebkitanimationstart',
+      'onwebkittransitionend','onauxclick','onbeforecopy','contentEditable','onbeforecut','popovertarget',
+      'onbeforetoggle','autofocus','drarrable','onfullscreenchange','required','onmouseleave','autoplay','onpointerdown',
+      'onpointerenter','onpointerleave','onpointermove','onpointerout','onpointerover','onpointerrawupdate','onpointerup',
+      'onselectionchange','onselectstart','contextmenu','ontouched','ontouchmove','ontouchstart'];
 
     function strToHtml(str) {
       let forbiddenTag = '';
@@ -1058,6 +1092,21 @@ const hvScriptSet = {
       return (/\.jpg|\.png|\.gif/.test(src));
     }
 
+    function clearResponse(data) {
+      const result = [];
+
+      data.forEach(str => {
+        try {
+          JSON.parse(str);
+          result.push(str);
+        } catch (e) {
+          console.error(`hvScriptSet: Маска неверно сохранилась и была удалена. Текст: ${str}`);
+        }
+      });
+
+      return result;
+    }
+
     function checkAccess() {
       if (!window.FORUM.topic) return false;
       if (!opt.forumAccess || window.GroupID === 1 || window.GroupID === 2) return true;
@@ -1082,7 +1131,7 @@ const hvScriptSet = {
     }
 
     function getStorageMask() {
-      let mask = $.ajax({
+      $.ajax({
         async: false,
         url: '/api.php',
         data: {
@@ -1093,7 +1142,13 @@ const hvScriptSet = {
           const response = result.response;
 
           if (response) {
-            prevMasks = decodeURI(response.storage.data.maskListUser).split('|splitKey|');
+            let data;
+            try {
+              data = decodeURI(response.storage.data.maskListUser).split('|splitKey|');
+            } catch (e) {
+              data = response.storage.data.maskListUser.split('|splitKey|');
+            }
+            prevMasks = clearResponse(data);
             getMaskStorage();
           }
         }
@@ -1111,8 +1166,8 @@ const hvScriptSet = {
         },
         success: function (result) {
           if (!result.error && result.response && result.response.storage && result.response.storage.data
-              && result.response.storage.data.profileMaskSettings === JSON.stringify(localSettings)) {
-              return; // настройки уже сохранены
+            && result.response.storage.data.profileMaskSettings === JSON.stringify(localSettings)) {
+            return; // настройки уже сохранены
           }
 
           $.post('/api.php', {
