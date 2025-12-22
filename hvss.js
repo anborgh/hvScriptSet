@@ -1251,5 +1251,9 @@ const hvScriptSet = {
     $(document).on('pun_edit', () => getPosts());
     $(document).on('pun_preview', () => hidePreviewTags());
     $(document).on('pun_preedit', () => hidePreviewTags());
+    
+    //чтобы можно было заюзать призыв диалога заполнения маски по какой-нибудь иной кнопке
+    //например, добавленной чз FORUM.set или через утилитку от Ильи...
+    this.showMaskModalFunction = callMaskDialog;  
   }
 };
