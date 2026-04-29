@@ -2,30 +2,23 @@
 
 /**
  * hvScriptSet
- * Version: 1.0.23
+ * Version: 1.0.24
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. Фикс адресов сохранённых аватаров с forumupload.ru на upforme.ru
+ * 1. Внутренний фикс
  */
 
 const hvScriptSet = {
 
   data: {},
 
-  addMask: function (opt) {
+  addMask: async function (options) {
+    const opt = options || await getMaskSettings();
+
     if (!opt) {
       console.error('Настройки скрипта маски не определены');
-      return;
-    }
-
-    // Скрипт не работает, если включен системный скрипт маски
-    if (
-      window.FORUM
-      && window.FORUM.profileMask
-      && window.FORUM.profileMask.enabled
-    ) {
       return;
     }
 
@@ -64,7 +57,7 @@ const hvScriptSet = {
     };
     that.data.changeList = changeList;
 
-    if (window.GroupID === 1) {
+    if (window.GroupID === 1 && options) {
       saveMaskSettings(opt);
     }
 
@@ -1183,6 +1176,29 @@ const hvScriptSet = {
       });
     }
 
+    async function getMaskSettings() {
+      const { response } = await $.get('/api.php', {
+        method: 'storage.get',
+        token: window.ForumAPITicket,
+        key: 'profileMaskSettings',
+        app_id: 16777215,
+      });
+
+      if (!response) {
+        return;
+      }
+
+      const settings = response.storage?.data?.profileMaskSettings;
+      if (!settings) {
+        return;
+      }
+      try {
+        return JSON.parse(settings);
+      } catch (e) {
+        return;
+      }
+    }
+
     function getClearedPost(post, chList) {
       let codeBoxes = post.innerHTML.match(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi, '|code-box-replacer|');
       let text = post.innerHTML.replace(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi, '|code-box-replacer|')
@@ -1231,7 +1247,8 @@ const hvScriptSet = {
       return null;
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    function init() {
+      if (that.inited) return;
       getStyle();
       if (window.FORUM.topic) {
         getPosts();
@@ -1246,7 +1263,13 @@ const hvScriptSet = {
       } else {
         hideTags();
       }
-    });
+      that.inited = true;
+    }
+
+    if (!options) {
+      init();
+    }
+    document.addEventListener('DOMContentLoaded', () => init());
     $(document).on('pun_post', () => getPosts());
     $(document).on('pun_edit', () => getPosts());
     $(document).on('pun_preview', () => hidePreviewTags());
