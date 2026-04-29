@@ -202,3 +202,176 @@
 .post-content .hvmask {
     display: none;
 }
+
+/* new UI blocks (safe for old script: only new classes/selectors) */
+.hvMiniProfileWrapper {
+    position: relative;
+    width: 0;
+    height: 0;
+    margin: -1px;
+    z-index: 10;
+}
+
+.hvMiniProfile {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    padding: 4px;
+    background: #e0dbcc;
+    box-shadow: 0 0 1px 0 rgba(0, 0, 0, .5);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.hvMiniProfile img {
+    max-width: 32px;
+    transition: all ease-out .5s;
+    opacity: .5;
+    display: block;
+}
+
+.hvMiniProfile.hv-mask-state::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
+    background: center/contain no-repeat url("https://i.imgur.com/ONu0llO.png");
+    opacity: 0;
+    transition: opacity .2s ease-out;
+}
+
+.hvMiniProfile.hv-mask-ready img,
+.hvMiniProfile.hv-mask-ready::after {
+    opacity: 1;
+}
+
+.hv-editor-preview {
+    position: fixed;
+    z-index: 10010;
+    width: 140px;
+    border: 1px solid rgba(0, 0, 0, .1);
+    background: rgba(255, 255, 255, .7);
+    text-align: center;
+    word-break: break-word;
+    display: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .16);
+    overflow: hidden;
+    transform: scale(0.7);
+    transform-origin: top left;
+}
+
+.hv-editor-preview.is-visible {
+    display: block;
+}
+
+.hv-editor-preview .hv-preview-caption {
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: #777;
+    text-transform: uppercase;
+}
+
+.hv-editor-preview .post-author {
+    margin: 0;
+}
+
+.hv-editor-preview .post-author ul {
+    margin: 0;
+    padding: 8px;
+    list-style: none;
+}
+
+.hv-editor-preview .post-author li {
+    padding: 2px 0;
+}
+
+.hv-editor-preview .hv-preview-block img {
+    max-width: 100px;
+}
+
+.hv-editor-preview .hv-preview-block {
+    position: relative;
+    max-height: 280px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.hv-editor-preview .hv-preview-block * {
+    max-width: 100% !important;
+    box-sizing: border-box;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.hv-editor-preview .hv-preview-block .hv-preview-avatar img,
+.hv-editor-preview .hv-preview-block img {
+    height: auto !important;
+    max-height: 200px !important;
+}
+
+.hv-editor-preview .hv-preview-block [style*="position:fixed"],
+.hv-editor-preview .hv-preview-block [style*="position: fixed"],
+.hv-editor-preview .hv-preview-block [style*="position:absolute"],
+.hv-editor-preview .hv-preview-block [style*="position: absolute"] {
+    position: static !important;
+    inset: auto !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.hv-editor-preview .hv-preview-block a {
+    pointer-events: none !important;
+    cursor: default !important;
+}
+
+#mask_dialog .hv-options-menu {
+    display: inline-block;
+    margin-left: 10px;
+    vertical-align: middle;
+    position: relative;
+}
+
+#mask_dialog .hv-options-menu > summary {
+    display: inline-block;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+#mask_dialog .hv-options-menu > summary::-webkit-details-marker {
+    display: none;
+}
+
+#mask_dialog .hv-options-list {
+    position: absolute;
+    z-index: 10;
+    left: 0;
+    top: auto;
+    bottom: calc(100% + 4px);
+    min-width: 260px;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+}
+
+#mask_dialog .hv-options-list label {
+    display: block;
+    margin: 0;
+    white-space: nowrap;
+}
+
+#mask_dialog .hv-options-list label + label {
+    margin-top: 6px;
+}
+
+#mask_dialog .hv-options-list input[type="checkbox"] {
+    margin-right: 6px;
+}
