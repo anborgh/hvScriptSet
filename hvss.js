@@ -66,6 +66,7 @@ const hvScriptSet = {
     let previewForm = {};
     let responsePreviewForm = null;
     let responsePreviewWrapper = null;
+    let responsePreviewClearButton = null;
     let responseMessageField = null;
     let responsePreviewTrigger = null;
     let responsePreviewPinned = false;
@@ -84,7 +85,9 @@ const hvScriptSet = {
     const maskLimit = opt.maskLimit || 20;
 
     const canQuoteMask = !opt.disableQuote;
-    const topicMaskStorageKey = 'hvssTopicMasksByTopicId';
+    const topicMaskStorageKey = `hvssTopicMasksByTopicId:${window.UserID || 'guest'}`;
+    const unlockedTopicMaskIcon = '<svg class="hv-topic-mask-icon hv-topic-mask-icon-unlocked" viewBox="0 0 97.891 97.89" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M71.957,2.539c-14.299,0-25.934,11.635-25.934,25.934v8.764H2c-0.529,0-1.039,0.211-1.414,0.586C0.211,38.2,0,38.708,0,39.239l0.041,54.115c0,1.104,0.896,1.998,2,1.998l0,0l57.916-0.041c1.104,0,1.998-0.896,1.998-2V39.197c0-0.533-0.213-1.045-0.592-1.42c-0.373-0.373-0.881-0.58-1.408-0.58c-0.004,0-0.01,0-0.016,0L56.98,37.22v-8.748c0-8.258,6.719-14.977,14.977-14.977s14.975,6.719,14.975,14.977v6.764c0,1.105,0.896,2,2,2h6.959c1.104,0,2-0.895,2-2v-6.764C97.89,14.174,86.256,2.539,71.957,2.539z"/></svg>';
+    const lockedTopicMaskIcon = '<svg class="hv-topic-mask-icon hv-topic-mask-icon-locked" viewBox="0 0 94.666 94.666" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M76.923,35.406h-3.128v-8.945C73.795,11.871,61.924,0,47.333,0S20.871,11.871,20.871,26.461v8.945h-3.128c-1.104,0-2,0.896-2,2v55.26c0,1.104,0.896,2,2,2h59.18c1.104,0,2-0.896,2-2v-55.26C78.923,36.302,78.028,35.406,76.923,35.406zM47.333,11.181c8.426,0,15.281,6.854,15.281,15.28v8.945H32.052v-8.945C32.052,18.036,38.907,11.181,47.333,11.181z"/></svg>';
 
     let prevMasks = [];
 
@@ -410,17 +413,11 @@ const hvScriptSet = {
     function getDialog() {
       let maskButton = addButton();
       if (maskButton) {
-        if (checkAccessExtended() || getAccessByForumName() === 'extended') {
-          maskButton.addEventListener('click', (event) => {
-            if (event.ctrlKey || event.metaKey) {
-              insertAvatarTags();
-            } else {
-              callMaskDialog();
-            }
-          });
-        } else {
-          maskButton.addEventListener('click', insertAvatarTags);
-        }
+        maskButton.addEventListener('click', () => {
+          const hasAnyAccess = checkAccess() || checkAccessExtended() || Boolean(getAccessByForumName());
+          if (!hasAnyAccess) return;
+          callMaskDialog();
+        });
       }
       let maskDialog = buildMaskDialog();
       let main = document.querySelector('#pun-main');
@@ -430,14 +427,12 @@ const hvScriptSet = {
     function getStyle() {
       let style = document.createElement('link');
       style.rel = 'stylesheet';
-      style.href = 'https://forumstatic.ru/files/0017/95/29/92410.css';
+      const styleUrl = new URL('https://forumstatic.ru/files/0017/95/29/92410.css', window.location.href);
+      styleUrl.searchParams.set('_', Date.now());
+      style.href = styleUrl.toString();
 
       let docstyle = document.head.querySelector('link[href*="style"]');
       document.head.insertBefore(style, docstyle);
-    }
-
-    function insertAvatarTags() {
-      bbcode('[icon]', '[/icon]');
     }
 
     function setSelectionRange(input, selectionStart, selectionEnd) {
@@ -578,16 +573,22 @@ const hvScriptSet = {
 
     function fillForm(obj) {
       let form = document.querySelector('#mask_form');
+      const normalizedMask = normalizeMaskByAccess(obj || {});
       for (let change in changeList) {
         if (changeList.hasOwnProperty(change)) {
           let field = form.querySelector('#mask_' + change);
-          if (obj[change]) {
-            field.value = obj[change].value;
+          if (!field) {
+            delete tmpMask[change];
+            changeMaskForm(change, '');
+            continue;
+          }
+          if (normalizedMask[change]) {
+            field.value = normalizedMask[change].value;
             tmpMask[change] = {
-              'tag': obj[change].tag,
-              'value': obj[change].value
+              'tag': normalizedMask[change].tag,
+              'value': normalizedMask[change].value
             };
-            changeMaskForm(change, obj[change].value);
+            changeMaskForm(change, normalizedMask[change].value);
           } else {
             field.value = '';
             delete tmpMask[change];
@@ -777,8 +778,11 @@ const hvScriptSet = {
         }
       };
 
+      const allowedDialogFields = getAllowedDialogMaskFields();
       for (let mask in changeList) {
-        _loop(mask);
+        if (allowedDialogFields.includes(mask)) {
+          _loop(mask);
+        }
       }
 
       let formBlock = document.createElement('div');
@@ -815,7 +819,7 @@ const hvScriptSet = {
       optionsMenu.className = 'hv-options-menu';
       const optionsSummary = document.createElement('summary');
       optionsSummary.className = 'button';
-      optionsSummary.textContent = '...';
+      optionsSummary.textContent = '\u{2699}';
       const optionsList = document.createElement('div');
       optionsList.className = 'hv-options-list';
       const insertWithoutSaveLabel = document.createElement('label');
@@ -824,31 +828,35 @@ const hvScriptSet = {
       insertWithoutSaveCheckbox.name = 'insertWithoutSave';
       insertWithoutSaveLabel.appendChild(insertWithoutSaveCheckbox);
       insertWithoutSaveLabel.appendChild(document.createTextNode('Вставить без сохранения'));
-      const rememberTopicMaskLabel = document.createElement('label');
-      rememberTopicMaskCheckbox = document.createElement('input');
-      rememberTopicMaskCheckbox.type = 'checkbox';
+      optionsList.appendChild(insertWithoutSaveLabel);
+      optionsMenu.appendChild(optionsSummary);
+      optionsMenu.appendChild(optionsList);
+
+      rememberTopicMaskCheckbox = document.createElement('button');
+      rememberTopicMaskCheckbox.type = 'button';
       rememberTopicMaskCheckbox.name = 'rememberTopicMask';
-      rememberTopicMaskCheckbox.checked = false;
-      rememberTopicMaskCheckbox.defaultChecked = false;
-      rememberTopicMaskLabel.appendChild(rememberTopicMaskCheckbox);
-      rememberTopicMaskLabel.appendChild(document.createTextNode('Запомнить маску в этой теме'));
-      rememberTopicMaskCheckbox.addEventListener('change', () => {
+      rememberTopicMaskCheckbox.className = 'button hv-topic-mask-toggle is-inactive';
+      rememberTopicMaskCheckbox.innerHTML = unlockedTopicMaskIcon + lockedTopicMaskIcon;
+      setRememberTopicMaskEnabled(false);
+      if ($.fn && typeof $.fn.tipsy === 'function') {
+        $(rememberTopicMaskCheckbox).tipsy();
+      }
+      rememberTopicMaskCheckbox.addEventListener('click', () => {
+        if (rememberTopicMaskCheckbox.disabled) return;
         const topicId = getCurrentTopicId();
         if (!topicId) return;
-        if (!rememberTopicMaskCheckbox.checked) {
+        if (isRememberTopicMaskEnabled()) {
+          setRememberTopicMaskEnabled(false);
           removeTopicMaskState(topicId);
           return;
         }
         const state = getTopicMaskState(topicId);
+        setRememberTopicMaskEnabled(true);
         setTopicMaskState(topicId, {
           remember: true,
           mask: state && state.mask ? state.mask : {}
         });
       });
-      optionsList.appendChild(insertWithoutSaveLabel);
-      optionsList.appendChild(rememberTopicMaskLabel);
-      optionsMenu.appendChild(optionsSummary);
-      optionsMenu.appendChild(optionsList);
 
       let clearButton = document.createElement('input');
       clearButton.type = 'button';
@@ -867,6 +875,7 @@ const hvScriptSet = {
       let control = document.createElement('div');
       control.className = 'hv-control';
       control.appendChild(okButton);
+      control.appendChild(rememberTopicMaskCheckbox);
       control.appendChild(optionsMenu);
       control.appendChild(clearButton);
       control.appendChild(cancelButton);
@@ -1031,7 +1040,7 @@ const hvScriptSet = {
     }
 
     function clearMask() {
-      const rememberTopicMaskChecked = rememberTopicMaskCheckbox ? rememberTopicMaskCheckbox.checked : false;
+      const rememberTopicMaskChecked = isRememberTopicMaskEnabled();
       const insertWithoutSaveChecked = insertWithoutSaveCheckbox ? insertWithoutSaveCheckbox.checked : false;
       tmpMask = {};
       clearPreview(previewForm);
@@ -1042,7 +1051,7 @@ const hvScriptSet = {
       let maskForm = document.getElementById('mask_form');
       maskForm.reset();
       if (rememberTopicMaskCheckbox) {
-        rememberTopicMaskCheckbox.checked = rememberTopicMaskChecked;
+        setRememberTopicMaskEnabled(rememberTopicMaskChecked);
       }
       if (insertWithoutSaveCheckbox) {
         insertWithoutSaveCheckbox.checked = insertWithoutSaveChecked;
@@ -1163,6 +1172,28 @@ const hvScriptSet = {
       return JSON.parse(JSON.stringify(mask || {}));
     }
 
+    function isAvatarOnlyMode() {
+      const forumAccess = getAccessByForumName();
+      return !checkAccessExtended() && (checkAccess() || forumAccess === 'common');
+    }
+
+    function getAllowedDialogMaskFields() {
+      return isAvatarOnlyMode() ? ['avatar'] : Object.keys(changeList);
+    }
+
+    function normalizeMaskByAccess(mask) {
+      const srcMask = cloneMask(mask);
+      if (!isAvatarOnlyMode()) {
+        return srcMask;
+      }
+      if (srcMask.avatar && srcMask.avatar.value) {
+        return {
+          avatar: srcMask.avatar
+        };
+      }
+      return {};
+    }
+
     function getCurrentTopicId() {
       if (!/viewtopic\.php/i.test(window.location.pathname)) {
         return null;
@@ -1214,28 +1245,26 @@ const hvScriptSet = {
     function updateRememberTopicMaskState() {
       const topicId = getCurrentTopicId();
       if (!rememberTopicMaskCheckbox) return;
-      rememberTopicMaskCheckbox.checked = false;
+      setRememberTopicMaskEnabled(false);
       if (!topicId) {
         rememberTopicMaskCheckbox.disabled = true;
-        rememberTopicMaskCheckbox.title = 'Доступно только в viewtopic.php?id=N';
         return;
       }
 
       rememberTopicMaskCheckbox.disabled = false;
       const state = getTopicMaskState(topicId);
       const hasSavedMask = Boolean(state && state.mask && Object.keys(state.mask).length);
-      rememberTopicMaskCheckbox.checked = Boolean(state && state.remember === true && hasSavedMask);
+      setRememberTopicMaskEnabled(Boolean(state && state.remember === true && hasSavedMask));
       if (state && state.remember === true && !hasSavedMask) {
         removeTopicMaskState(topicId);
       }
-      rememberTopicMaskCheckbox.title = '';
     }
 
     function syncTopicMaskOnSubmit() {
       const topicId = getCurrentTopicId();
-      if (!topicId || !rememberTopicMaskCheckbox || !rememberTopicMaskCheckbox.checked || !hasActiveMask()) {
+      if (!topicId || !rememberTopicMaskCheckbox || !isRememberTopicMaskEnabled() || !hasActiveMask()) {
         if (rememberTopicMaskCheckbox && !hasActiveMask()) {
-          rememberTopicMaskCheckbox.checked = false;
+          setRememberTopicMaskEnabled(false);
         }
         if (topicId) {
           removeTopicMaskState(topicId);
@@ -1259,9 +1288,26 @@ const hvScriptSet = {
       return Object.keys(tmpMask).length > 0;
     }
 
+    function isRememberTopicMaskEnabled() {
+      return Boolean(rememberTopicMaskCheckbox && rememberTopicMaskCheckbox.classList.contains('is-active'));
+    }
+
+    function setRememberTopicMaskEnabled(isEnabled) {
+      if (!rememberTopicMaskCheckbox) return;
+      const enabled = Boolean(isEnabled);
+      rememberTopicMaskCheckbox.classList.toggle('is-active', enabled);
+      rememberTopicMaskCheckbox.classList.toggle('is-inactive', !enabled);
+      rememberTopicMaskCheckbox.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      rememberTopicMaskCheckbox.setAttribute('aria-label',
+        enabled ? 'Сложить надетую маску' : 'Всегда надевать маску в этой теме');
+      rememberTopicMaskCheckbox.setAttribute('title',
+        enabled ? 'Сложить надетую маску' : 'Всегда надевать маску в этой теме');
+    }
+
     function updateMaskButtonIndicator() {
       if (!responsePreviewTrigger) return;
       const hasMask = hasActiveMask();
+      const isRememberedMask = hasMask && isRememberTopicMaskEnabled();
       const avatar = tmpMask.avatar && tmpMask.avatar.value ? tmpMask.avatar.value : getAvatar();
       const avatarNode = responsePreviewTrigger.querySelector('img');
       if (avatarNode) {
@@ -1270,20 +1316,53 @@ const hvScriptSet = {
       responsePreviewTrigger.classList.add('hv-mask-state');
       responsePreviewTrigger.classList.toggle('hv-mask-ready', hasMask);
       responsePreviewTrigger.classList.toggle('hv-mask-empty', !hasMask);
+      responsePreviewTrigger.classList.toggle('hv-mask-remembered', isRememberedMask);
       responsePreviewTrigger.title = hasMask
-        ? 'Маска профиля (маска готова к вставке)'
-        : 'Маска профиля (маска не выбрана)';
+        ? UserLogin + ' под маской'
+        : UserLogin + ' без маски';
+      if (isRememberedMask) {
+        responsePreviewTrigger.title += ' (закреплена)'
+      }
       if (!hasMask && rememberTopicMaskCheckbox) {
-        rememberTopicMaskCheckbox.checked = false;
+        setRememberTopicMaskEnabled(false);
         removeTopicMaskState(getCurrentTopicId());
+      }
+      if (responsePreviewClearButton) {
+        responsePreviewClearButton.classList.toggle('is-visible', hasMask);
       }
     }
 
     function positionResponsePreview() {
       if (!responsePreviewWrapper || !responsePreviewTrigger) return;
       const rect = responsePreviewTrigger.getBoundingClientRect();
-      responsePreviewWrapper.style.top = `${Math.max(rect.top - 8, 8)}px`;
-      responsePreviewWrapper.style.left = `${Math.min(rect.right + 10, window.innerWidth - responsePreviewWrapper.offsetWidth - 8)}px`;
+      const viewportPadding = 8;
+      const gap = 10;
+      const previewRect = responsePreviewWrapper.getBoundingClientRect();
+      const previewWidth = previewRect.width;
+      const previewHeight = previewRect.height;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - previewWidth - viewportPadding);
+      const maxTop = Math.max(viewportPadding, window.innerHeight - previewHeight - viewportPadding);
+      const preferredTop = rect.top - 8;
+      const clampedTop = Math.min(Math.max(preferredTop, viewportPadding), maxTop);
+
+      const leftSide = rect.left - previewWidth - gap;
+      const rightSide = rect.right + gap;
+      const canPlaceLeft = leftSide >= viewportPadding;
+      const canPlaceRight = rightSide <= maxLeft;
+
+      let preferredLeft = leftSide;
+      if (!canPlaceLeft && canPlaceRight) {
+        preferredLeft = rightSide;
+      } else if (!canPlaceLeft && !canPlaceRight) {
+        const leftDistance = Math.abs(rect.left - leftSide);
+        const rightDistance = Math.abs(rightSide - rect.right);
+        preferredLeft = leftDistance <= rightDistance ? leftSide : rightSide;
+      }
+
+      const clampedLeft = Math.min(Math.max(preferredLeft, viewportPadding), maxLeft);
+
+      responsePreviewWrapper.style.left = `${clampedLeft}px`;
+      responsePreviewWrapper.style.top = `${clampedTop}px`;
     }
 
     function showResponsePreview() {
@@ -1355,10 +1434,10 @@ const hvScriptSet = {
       const extractResult = extractMaskFromMessage(responseMessageField.value);
       responseMessageField.value = extractResult.cleanMessage;
       if (Object.keys(extractResult.mask).length) {
-        fillForm(extractResult.mask);
+        fillForm(normalizeMaskByAccess(extractResult.mask));
       } else if (topicMaskState && topicMaskState.remember && topicMaskState.mask
         && Object.keys(topicMaskState.mask).length) {
-        fillForm(topicMaskState.mask);
+        fillForm(normalizeMaskByAccess(topicMaskState.mask));
       } else {
         clearMask();
       }
@@ -1370,8 +1449,19 @@ const hvScriptSet = {
         const previewBlock = document.createElement('div');
         previewBlock.className = 'hv-preview-block';
         responsePreviewWrapper.appendChild(previewBlock);
+        responsePreviewClearButton = document.createElement('button');
+        responsePreviewClearButton.type = 'button';
+        responsePreviewClearButton.className = 'hv-editor-preview-clear';
+        responsePreviewClearButton.textContent = 'Снять маску';
+        responsePreviewClearButton.addEventListener('click', event => {
+          event.preventDefault();
+          clearMask();
+        });
+        responsePreviewWrapper.appendChild(responsePreviewClearButton);
         const punbbContainer = document.querySelector('div.punbb');
         (punbbContainer || document.body).appendChild(responsePreviewWrapper);
+      } else {
+        responsePreviewClearButton = responsePreviewWrapper.querySelector('.hv-editor-preview-clear');
       }
 
       if (!responsePreviewTrigger) {

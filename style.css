@@ -186,13 +186,12 @@
 }
 
 #mask_dialog .hv-control {
-    padding: 8px;
-    text-align: center;
     position: relative;
-}
-
-#mask_dialog .hv-control input + input {
-    margin-left: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .hv-mask-tipsy {
@@ -217,7 +216,7 @@
     right: 8px;
     top: 8px;
     padding: 4px;
-    background: #e0dbcc;
+    background: #ffffff33;
     box-shadow: 0 0 1px 0 rgba(0, 0, 0, .5);
     border-radius: 4px;
     cursor: pointer;
@@ -233,17 +232,37 @@
 .hvMiniProfile.hv-mask-state::after {
     content: '';
     position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 14px;
-    height: 14px;
-    background: center/contain no-repeat url("https://i.imgur.com/ONu0llO.png");
+    top: 3px;
+    right: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d47b24;
+    opacity: 0;
+    z-index: 1;
+    transition: opacity .2s ease-out;
+}
+
+.hvMiniProfile.hv-mask-state::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    background: center/contain no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 94.666 94.666'%3E%3Cpath fill='%23ffffff' d='M76.923,35.406h-3.128v-8.945C73.795,11.871,61.924,0,47.333,0S20.871,11.871,20.871,26.461v8.945h-3.128c-1.104,0-2,0.896-2,2v55.26c0,1.104,0.896,2,2,2h59.18c1.104,0,2-0.896,2-2v-55.26C78.923,36.302,78.028,35.406,76.923,35.406zM47.333,11.181c8.426,0,15.281,6.854,15.281,15.28v8.945H32.052v-8.945C32.052,18.036,38.907,11.181,47.333,11.181z'/%3E%3C/svg%3E");
     opacity: 0;
     transition: opacity .2s ease-out;
+    z-index: 2;
 }
 
 .hvMiniProfile.hv-mask-ready img,
 .hvMiniProfile.hv-mask-ready::after {
+    opacity: 1;
+}
+
+.hvMiniProfile.hv-mask-remembered::before {
     opacity: 1;
 }
 
@@ -305,6 +324,10 @@
     overflow-wrap: anywhere;
 }
 
+.hv-editor-preview .hv-preview-block ul > :empty {
+    display: none;
+}
+
 .hv-editor-preview .hv-preview-block .hv-preview-avatar img,
 .hv-editor-preview .hv-preview-block img {
     height: auto !important;
@@ -331,9 +354,18 @@
     cursor: default !important;
 }
 
+.hv-editor-preview .hv-editor-preview-clear {
+    display: none;
+    margin: 2px auto;
+    cursor: pointer;
+}
+
+.hv-editor-preview .hv-editor-preview-clear.is-visible {
+    display: block;
+}
+
 #mask_dialog .hv-options-menu {
     display: inline-block;
-    margin-left: 10px;
     vertical-align: middle;
     position: relative;
 }
@@ -357,9 +389,11 @@
     bottom: calc(100% + 4px);
     min-width: 260px;
     padding: 8px;
-    background: #fff;
+    background: #F4F5F6 url("https://i.imgur.com/akmlat3.png");
     border: 1px solid #ccc;
     box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+    color: unset;
+    text-align: left;
 }
 
 #mask_dialog .hv-options-list label {
@@ -374,4 +408,181 @@
 
 #mask_dialog .hv-options-list input[type="checkbox"] {
     margin-right: 6px;
+}
+
+#mask_dialog .hv-topic-mask-toggle {
+    --hv-topic-mask-color-inactive: #666;
+    --hv-topic-mask-color-active: #d47b24;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    color: var(--hv-topic-mask-color-inactive);
+}
+
+#mask_dialog .hv-topic-mask-toggle.is-active {
+    color: var(--hv-topic-mask-color-active);
+}
+
+#mask_dialog .hv-topic-mask-toggle .hv-topic-mask-icon {
+    width: 16px;
+    height: 16px;
+    display: none;
+}
+
+#mask_dialog .hv-topic-mask-toggle.is-active .hv-topic-mask-icon-locked {
+    display: block;
+}
+
+#mask_dialog .hv-topic-mask-toggle.is-inactive .hv-topic-mask-icon-unlocked {
+    display: block;
+}
+
+/* ── Forum Access Dialog ─────────────────────────────────────────── */
+
+#accessForumForm {
+    border: none;
+    border-radius: 8px;
+    padding: 0;
+    max-width: 700px;
+    width: 96vw;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, .35);
+    overflow: hidden;
+}
+
+#accessForumForm::backdrop {
+    background: rgba(0, 0, 0, .45);
+}
+
+#accessForumForm h2 {
+    margin: 0;
+    padding: 14px 18px;
+    font-size: 15px;
+    background: #e8eaed;
+    border-bottom: 1px solid #ccc;
+}
+
+#accessLevels {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+#accessLevels thead th {
+    padding: 8px 10px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #555;
+    background: #f4f5f6;
+    border-bottom: 2px solid #ddd;
+    text-align: center;
+}
+
+#accessLevels thead th:nth-child(1) { border-top: 3px solid #d45; }
+#accessLevels thead th:nth-child(2) { border-top: 3px solid #e96; }
+#accessLevels thead th:nth-child(3) { border-top: 3px solid #5a9; }
+
+.access-drop-zone {
+    vertical-align: top;
+    padding: 8px;
+    min-height: 120px;
+    border-right: 1px solid #e2e2e2;
+    transition: background .15s ease;
+}
+
+.access-drop-zone:last-child {
+    border-right: none;
+}
+
+.access-drop-zone.drag-over {
+    background: #e8f0fe;
+    outline: 2px dashed #4285f4;
+    outline-offset: -3px;
+}
+
+.access-group-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 9px;
+    margin: 3px;
+    border-radius: 20px;
+    font-size: 12px;
+    line-height: 1.4;
+    background: #fff;
+    border: 1px solid #ccc;
+    cursor: grab;
+    user-select: none;
+    transition: box-shadow .12s ease, opacity .12s ease, transform .12s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+
+.access-group-chip:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+    border-color: #aaa;
+}
+
+.access-group-chip.dragging {
+    opacity: .45;
+    cursor: grabbing;
+    transform: scale(.97);
+}
+
+.access-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid #ddd;
+    background: #f4f5f6;
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    #mask_dialog .inner {
+        width: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        padding: 8px 6px;
+        overflow-x: hidden;
+    }
+
+    #mask_dialog .hv-mask-block {
+        flex-wrap: wrap;
+    }
+
+    #mask_dialog .hv-preview-block {
+        display: none;
+    }
+
+    #mask_dialog .hv-form-block {
+        flex: 1 1 100%;
+        max-height: none;
+        overflow: visible;
+    }
+
+    #mask_dialog .hv-masks-storage {
+        order: 2;
+        flex: 1 1 100%;
+        max-height: none;
+        margin-top: 8px;
+        padding: 8px 0;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #mask_dialog .hv-mask-element {
+        flex: 0 0 68px;
+    }
+
+    #mask_dialog .hv-storage-count {
+        flex: 0 0 auto;
+        width: auto;
+        white-space: nowrap;
+        padding: 0 8px 0 0;
+        text-align: left;
+    }
 }
