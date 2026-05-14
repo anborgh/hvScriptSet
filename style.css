@@ -202,7 +202,6 @@
     display: none;
 }
 
-/* new UI blocks (safe for old script: only new classes/selectors) */
 .hvMiniProfileWrapper {
     position: relative;
     width: 0;
@@ -437,107 +436,6 @@
 #mask_dialog .hv-topic-mask-toggle.is-inactive .hv-topic-mask-icon-unlocked {
     display: block;
 }
-
-/* ── Forum Access Dialog ─────────────────────────────────────────── */
-
-#accessForumForm {
-    border: none;
-    border-radius: 8px;
-    padding: 0;
-    max-width: 700px;
-    width: 96vw;
-    box-shadow: 0 8px 40px rgba(0, 0, 0, .35);
-    overflow: hidden;
-}
-
-#accessForumForm::backdrop {
-    background: rgba(0, 0, 0, .45);
-}
-
-#accessForumForm h2 {
-    margin: 0;
-    padding: 14px 18px;
-    font-size: 15px;
-    background: #e8eaed;
-    border-bottom: 1px solid #ccc;
-}
-
-#accessLevels {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-}
-
-#accessLevels thead th {
-    padding: 8px 10px;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    color: #555;
-    background: #f4f5f6;
-    border-bottom: 2px solid #ddd;
-    text-align: center;
-}
-
-#accessLevels thead th:nth-child(1) { border-top: 3px solid #d45; }
-#accessLevels thead th:nth-child(2) { border-top: 3px solid #e96; }
-#accessLevels thead th:nth-child(3) { border-top: 3px solid #5a9; }
-
-.access-drop-zone {
-    vertical-align: top;
-    padding: 8px;
-    min-height: 120px;
-    border-right: 1px solid #e2e2e2;
-    transition: background .15s ease;
-}
-
-.access-drop-zone:last-child {
-    border-right: none;
-}
-
-.access-drop-zone.drag-over {
-    background: #e8f0fe;
-    outline: 2px dashed #4285f4;
-    outline-offset: -3px;
-}
-
-.access-group-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 9px;
-    margin: 3px;
-    border-radius: 20px;
-    font-size: 12px;
-    line-height: 1.4;
-    background: #fff;
-    border: 1px solid #ccc;
-    cursor: grab;
-    user-select: none;
-    transition: box-shadow .12s ease, opacity .12s ease, transform .12s ease;
-    box-shadow: 0 1px 3px rgba(0,0,0,.1);
-}
-
-.access-group-chip:hover {
-    box-shadow: 0 2px 8px rgba(0,0,0,.18);
-    border-color: #aaa;
-}
-
-.access-group-chip.dragging {
-    opacity: .45;
-    cursor: grabbing;
-    transform: scale(.97);
-}
-
-.access-dialog-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 10px 14px;
-    border-top: 1px solid #ddd;
-    background: #f4f5f6;
-}
-
-/* ─────────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
     #mask_dialog .inner {

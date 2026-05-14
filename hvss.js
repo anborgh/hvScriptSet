@@ -428,7 +428,6 @@ const hvScriptSet = {
       let style = document.createElement('link');
       style.rel = 'stylesheet';
       const styleUrl = new URL('https://forumstatic.ru/files/0017/95/29/92410.css', window.location.href);
-      styleUrl.searchParams.set('_', Date.now());
       style.href = styleUrl.toString();
 
       let docstyle = document.head.querySelector('link[href*="style"]');
