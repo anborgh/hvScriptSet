@@ -2,13 +2,12 @@
 
 /**
  * hvScriptSet
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. Добавлена возможность сохранять маску в теме
- * 2. Код маски теперь не отображается в форме ответа, а отображается в превью
+ * 1. Код маски можно вставить/скрыть кнопкой в превью ответа
  */
 
 const hvScriptSet = {
@@ -67,12 +66,12 @@ const hvScriptSet = {
     let responsePreviewForm = null;
     let responsePreviewWrapper = null;
     let responsePreviewClearButton = null;
+    let responsePreviewInsertCodeButton = null;
     let responseMessageField = null;
     let responsePreviewTrigger = null;
     let responsePreviewPinned = false;
     let dialogMaskSnapshot = {};
     let maskButton = null;
-    let insertWithoutSaveCheckbox = null;
     let rememberTopicMaskCheckbox = null;
     let errorList = {};
 
@@ -806,30 +805,7 @@ const hvScriptSet = {
       okButton.className = 'button';
       okButton.name = 'insertMask';
       okButton.value = 'Вставить маску';
-      okButton.addEventListener('click', () => {
-        if (insertWithoutSaveCheckbox && insertWithoutSaveCheckbox.checked) {
-          insertMask();
-        } else {
-          saveMask();
-        }
-      });
-
-      const optionsMenu = document.createElement('details');
-      optionsMenu.className = 'hv-options-menu';
-      const optionsSummary = document.createElement('summary');
-      optionsSummary.className = 'button';
-      optionsSummary.textContent = '\u{2699}';
-      const optionsList = document.createElement('div');
-      optionsList.className = 'hv-options-list';
-      const insertWithoutSaveLabel = document.createElement('label');
-      insertWithoutSaveCheckbox = document.createElement('input');
-      insertWithoutSaveCheckbox.type = 'checkbox';
-      insertWithoutSaveCheckbox.name = 'insertWithoutSave';
-      insertWithoutSaveLabel.appendChild(insertWithoutSaveCheckbox);
-      insertWithoutSaveLabel.appendChild(document.createTextNode('Вставить без сохранения'));
-      optionsList.appendChild(insertWithoutSaveLabel);
-      optionsMenu.appendChild(optionsSummary);
-      optionsMenu.appendChild(optionsList);
+      okButton.addEventListener('click', insertMask);
 
       rememberTopicMaskCheckbox = document.createElement('button');
       rememberTopicMaskCheckbox.type = 'button';
@@ -849,11 +825,15 @@ const hvScriptSet = {
           removeTopicMaskState(topicId);
           return;
         }
-        const state = getTopicMaskState(topicId);
+        adoptMaskFromMessageIfPresent();
+        const maskToSave = getEffectiveMask();
+        if (!Object.keys(maskToSave).length) {
+          return;
+        }
         setRememberTopicMaskEnabled(true);
         setTopicMaskState(topicId, {
           remember: true,
-          mask: state && state.mask ? state.mask : {}
+          mask: cloneMask(maskToSave)
         });
       });
 
@@ -875,7 +855,6 @@ const hvScriptSet = {
       control.className = 'hv-control';
       control.appendChild(okButton);
       control.appendChild(rememberTopicMaskCheckbox);
-      control.appendChild(optionsMenu);
       control.appendChild(clearButton);
       control.appendChild(cancelButton);
 
@@ -952,47 +931,57 @@ const hvScriptSet = {
       hideMaskDialog();
     }
 
-    function saveMask() {
-      if (Object.keys(tmpMask).length === 0) {
-        hideMaskDialog();
-        return;
+    function persistMaskToUserStorage(mask, options = {}) {
+      const maskToSave = cloneMask(mask || {});
+      if (!Object.keys(maskToSave).length) {
+        return false;
       }
 
-      if (Object.keys(tmpMask).length > 0) {
-        if (Object.keys(prevMasks).length > 0) {
-          if (!(hasMaskInStorage(prevMasks, tmpMask) + 1)) {
-            if (prevMasks.length >= maskLimit) {
-              prevMasks.splice(0, 1);
-            }
-          } else {
-            prevMasks.splice(hasMaskInStorage(prevMasks, tmpMask), 1);
+      if (Object.keys(prevMasks).length > 0) {
+        const existingIndex = hasMaskInStorage(prevMasks, maskToSave);
+        if (existingIndex === -1) {
+          if (prevMasks.length >= maskLimit) {
+            prevMasks.splice(0, 1);
           }
+        } else {
+          prevMasks.splice(existingIndex, 1);
         }
-        prevMasks.push(JSON.stringify(tmpMask));
+      }
+      prevMasks.push(JSON.stringify(maskToSave));
 
-        const value = encodeURI(prevMasks.join('|splitKey|'));
-        if (value.length >= 65500) {
-          $.jGrowl("Хранилище масок переполнено, не могу сохранить ещё маску 😔");
-          throw new Error('Ошибка сохранения');
-        }
+      const value = encodeURI(prevMasks.join('|splitKey|'));
+      if (value.length >= 65500) {
+        prevMasks.pop();
+        $.jGrowl("Хранилище масок переполнено, не могу сохранить ещё маску 😔");
+        return false;
+      }
 
-        $.post('/api.php',
-          {
-            method: 'storage.set',
-            token: window.ForumAPITicket,
-            key: 'maskListUser',
-            value,
-          }
-        )
-          .done(function() {
-            getMaskStorage(prevMasks);
-            hideMaskDialog();
-          })
-          .fail(function() {
+      let success = false;
+      $.ajax({
+        async: false,
+        type: 'POST',
+        url: '/api.php',
+        data: {
+          method: 'storage.set',
+          token: window.ForumAPITicket,
+          key: 'maskListUser',
+          value,
+        },
+        success: function () {
+          success = true;
+        },
+        error: function () {
+          if (options.updateUi) {
             errorList.common = 'Ошибка сохранения, попробуй ещё раз.';
             showErrors();
-          });
+          }
+        }
+      });
+
+      if (success && options.updateUi) {
+        getMaskStorage(prevMasks);
       }
+      return success;
     }
 
     function hasMaskInStorage(storage, item) {
@@ -1040,7 +1029,7 @@ const hvScriptSet = {
 
     function clearMask() {
       const rememberTopicMaskChecked = isRememberTopicMaskEnabled();
-      const insertWithoutSaveChecked = insertWithoutSaveCheckbox ? insertWithoutSaveCheckbox.checked : false;
+      removeMaskCodeFromMessage({ skipAdopt: true });
       tmpMask = {};
       clearPreview(previewForm);
       clearPreview(responsePreviewForm, true);
@@ -1051,9 +1040,6 @@ const hvScriptSet = {
       maskForm.reset();
       if (rememberTopicMaskCheckbox) {
         setRememberTopicMaskEnabled(rememberTopicMaskChecked);
-      }
-      if (insertWithoutSaveCheckbox) {
-        insertWithoutSaveCheckbox.checked = insertWithoutSaveChecked;
       }
     }
 
@@ -1259,25 +1245,93 @@ const hvScriptSet = {
       }
     }
 
-    function syncTopicMaskOnSubmit() {
+    function syncTopicMaskOnSubmit(fromEdit) {
       const topicId = getCurrentTopicId();
-      if (!topicId || !rememberTopicMaskCheckbox || !isRememberTopicMaskEnabled() || !hasActiveMask()) {
-        if (rememberTopicMaskCheckbox && !hasActiveMask()) {
+      adoptMaskFromMessageIfPresent();
+      const maskToSave = getEffectiveMask();
+      if (!topicId || !rememberTopicMaskCheckbox || !isRememberTopicMaskEnabled() || !Object.keys(maskToSave).length) {
+        if (rememberTopicMaskCheckbox && !Object.keys(maskToSave).length) {
           setRememberTopicMaskEnabled(false);
         }
-        if (topicId) {
+        if (topicId && (!isRememberTopicMaskEnabled() || !Object.keys(maskToSave).length)) {
           removeTopicMaskState(topicId);
         }
         return;
       }
       setTopicMaskState(topicId, {
         remember: true,
-        mask: cloneMask(tmpMask)
+        mask: cloneMask(maskToSave)
       });
+    }
+
+    function isMaskCodeInMessage() {
+      return Boolean(responseMessageField && /\[block=hvmask\]/i.test(responseMessageField.value));
+    }
+
+    function getEffectiveMask() {
+      if (isMaskCodeInMessage()) {
+        const extracted = extractMaskFromMessage(responseMessageField.value);
+        if (Object.keys(extracted.mask).length) {
+          return normalizeMaskByAccess(extracted.mask);
+        }
+      }
+      return cloneMask(tmpMask);
+    }
+
+    function adoptMaskFromMessageIfPresent() {
+      if (!isMaskCodeInMessage()) return false;
+      const extracted = extractMaskFromMessage(responseMessageField.value);
+      if (!Object.keys(extracted.mask).length) return false;
+      fillForm(normalizeMaskByAccess(extracted.mask));
+      return true;
+    }
+
+    function removeMaskCodeFromMessage(options = {}) {
+      if (!responseMessageField) {
+        updateInsertCodeButtonState();
+        return;
+      }
+      if (!options.skipAdopt) {
+        adoptMaskFromMessageIfPresent();
+      }
+      responseMessageField.value = extractMaskFromMessage(responseMessageField.value).cleanMessage;
+      updateInsertCodeButtonState();
+    }
+
+    function insertMaskCodeToMessage() {
+      if (!responseMessageField || !hasActiveMask()) return;
+      const baseMessage = extractMaskFromMessage(responseMessageField.value).cleanMessage;
+      responseMessageField.value = `${baseMessage}\n${getStrMask()}`.trim();
+      updateInsertCodeButtonState();
+    }
+
+    function toggleMaskCodeInMessage() {
+      if (isMaskCodeInMessage()) {
+        removeMaskCodeFromMessage();
+        return;
+      }
+      insertMaskCodeToMessage();
+    }
+
+    function updateInsertCodeButtonState() {
+      if (!responsePreviewInsertCodeButton) return;
+      const hasMask = hasActiveMask();
+      const isShown = isMaskCodeInMessage();
+      responsePreviewInsertCodeButton.classList.toggle('is-visible', hasMask);
+      responsePreviewInsertCodeButton.classList.toggle('is-active', isShown);
+      responsePreviewInsertCodeButton.textContent = isShown ? 'Скрыть код' : 'Показать код';
+      responsePreviewInsertCodeButton.title = isShown
+        ? 'Убрать код маски из поля ответа'
+        : 'Вставить код маски в поле ответа';
     }
 
     function injectMaskToMessage() {
       if (!responseMessageField) return;
+      // Код уже в поле (в т.ч. правленный вручную) — оставляем как есть и запоминаем его
+      if (isMaskCodeInMessage()) {
+        adoptMaskFromMessageIfPresent();
+        return;
+      }
       const baseMessage = extractMaskFromMessage(responseMessageField.value).cleanMessage;
       const maskString = Object.keys(tmpMask).length ? getStrMask() : '';
       responseMessageField.value = maskString ? `${baseMessage}\n${maskString}`.trim() : baseMessage;
@@ -1304,7 +1358,10 @@ const hvScriptSet = {
     }
 
     function updateMaskButtonIndicator() {
-      if (!responsePreviewTrigger) return;
+      if (!responsePreviewTrigger) {
+        updateInsertCodeButtonState();
+        return;
+      }
       const hasMask = hasActiveMask();
       const isRememberedMask = hasMask && isRememberTopicMaskEnabled();
       const avatar = tmpMask.avatar && tmpMask.avatar.value ? tmpMask.avatar.value : getAvatar();
@@ -1322,13 +1379,10 @@ const hvScriptSet = {
       if (isRememberedMask) {
         responsePreviewTrigger.title += ' (закреплена)'
       }
-      if (!hasMask && rememberTopicMaskCheckbox) {
-        setRememberTopicMaskEnabled(false);
-        removeTopicMaskState(getCurrentTopicId());
-      }
       if (responsePreviewClearButton) {
         responsePreviewClearButton.classList.toggle('is-visible', hasMask);
       }
+      updateInsertCodeButtonState();
     }
 
     function positionResponsePreview() {
@@ -1419,8 +1473,9 @@ const hvScriptSet = {
       });
     }
 
-    function initResponsePreview() {
-      responseMessageField = document.querySelector('textarea[name="req_message"]');
+    function initResponsePreview(fromEdit = false) {
+      responseMessageField = Array.from(document.querySelectorAll('textarea[name="req_message"]'))
+        .find(el => !el.closest('#hv_preview_form')) || null;
       if (!responseMessageField) return;
 
       const form = responseMessageField.form;
@@ -1428,13 +1483,15 @@ const hvScriptSet = {
       const topicId = getCurrentTopicId();
       const topicMaskState = getTopicMaskState(topicId);
 
-      updateRememberTopicMaskState();
+      if (!fromEdit) {
+        updateRememberTopicMaskState();
+      }
 
       const extractResult = extractMaskFromMessage(responseMessageField.value);
       responseMessageField.value = extractResult.cleanMessage;
       if (Object.keys(extractResult.mask).length) {
         fillForm(normalizeMaskByAccess(extractResult.mask));
-      } else if (topicMaskState && topicMaskState.remember && topicMaskState.mask
+      } else if (topicMaskState && topicMaskState.remember && topicMaskState.mask && !fromEdit
         && Object.keys(topicMaskState.mask).length) {
         fillForm(normalizeMaskByAccess(topicMaskState.mask));
       } else {
@@ -1448,6 +1505,16 @@ const hvScriptSet = {
         const previewBlock = document.createElement('div');
         previewBlock.className = 'hv-preview-block';
         responsePreviewWrapper.appendChild(previewBlock);
+        responsePreviewInsertCodeButton = document.createElement('button');
+        responsePreviewInsertCodeButton.type = 'button';
+        responsePreviewInsertCodeButton.className = 'hv-preview-insert-code';
+        responsePreviewInsertCodeButton.textContent = 'Показать код';
+        responsePreviewInsertCodeButton.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleMaskCodeInMessage();
+        });
+        responsePreviewWrapper.appendChild(responsePreviewInsertCodeButton);
         responsePreviewClearButton = document.createElement('button');
         responsePreviewClearButton.type = 'button';
         responsePreviewClearButton.className = 'hv-editor-preview-clear';
@@ -1460,6 +1527,7 @@ const hvScriptSet = {
         const punbbContainer = document.querySelector('div.punbb');
         (punbbContainer || document.body).appendChild(responsePreviewWrapper);
       } else {
+        responsePreviewInsertCodeButton = responsePreviewWrapper.querySelector('.hv-preview-insert-code');
         responsePreviewClearButton = responsePreviewWrapper.querySelector('.hv-editor-preview-clear');
       }
 
@@ -1484,23 +1552,27 @@ const hvScriptSet = {
       }
       updateMaskButtonIndicator();
       bindResponsePreviewEvents();
+      let isPreparingMask = false;
+
+      function prepareMaskForPost() {
+        if (isPreparingMask) return;
+        injectMaskToMessage();
+        if (!fromEdit) {
+          syncTopicMaskOnSubmit();
+          persistMaskToUserStorage(getEffectiveMask());
+        }
+        isPreparingMask = true;
+      }
 
       if (!form.dataset.hvMaskSubmitBind) {
         form.dataset.hvMaskSubmitBind = '1';
         form.addEventListener('submit', function () {
-          injectMaskToMessage();
-          syncTopicMaskOnSubmit();
+          prepareMaskForPost();
         }, true);
-      }
 
-      if (!form.dataset.hvMaskNativeSubmitBind) {
-        form.dataset.hvMaskNativeSubmitBind = '1';
-        const nativeSubmit = form.submit;
-        form.submit = function () {
-          injectMaskToMessage();
-          syncTopicMaskOnSubmit();
-          return nativeSubmit.call(this);
-        };
+        document.querySelector('.ajax-post').addEventListener('click', () => {
+          prepareMaskForPost();
+        }, true);
       }
     }
 
@@ -1806,6 +1878,9 @@ const hvScriptSet = {
     $(document).on('pun_post', () => getPosts());
     $(document).on('pun_edit', () => getPosts());
     $(document).on('pun_preview', () => hidePreviewTags());
-    $(document).on('pun_preedit', () => hidePreviewTags());
+    $(document).on('pun_preedit', () => {
+      initResponsePreview(true);
+      hidePreviewTags();
+    });
   }
 };

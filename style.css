@@ -353,14 +353,20 @@
     cursor: default !important;
 }
 
+.hv-editor-preview .hv-preview-insert-code,
 .hv-editor-preview .hv-editor-preview-clear {
     display: none;
     margin: 2px auto;
     cursor: pointer;
 }
 
+.hv-editor-preview .hv-preview-insert-code.is-visible,
 .hv-editor-preview .hv-editor-preview-clear.is-visible {
     display: block;
+}
+
+.hv-editor-preview .hv-preview-insert-code.is-active {
+    font-weight: bold;
 }
 
 #mask_dialog .hv-options-menu {
