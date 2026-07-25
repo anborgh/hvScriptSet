@@ -1884,3 +1884,62 @@ const hvScriptSet = {
     });
   }
 };
+
+/**
+ * Если на форуме подключён HvScriptManager — подтянуть форму настроек маски.
+ */
+(function loadProfileMaskSettingsForm() {
+  const MASK_SETTINGS_SRC = 'https://forumstatic.ru/files/0017/95/29/45711.js';
+  let requested = false;
+
+  function alreadyPresent() {
+    if (document.querySelector('script[src*="45711.js"]')) {
+      return true;
+    }
+    const mgr = window.HvScriptManager;
+    if (mgr && typeof mgr.list === 'function') {
+      try {
+        return mgr.list().some(function (form) {
+          return form && form.id === 'profile-mask';
+        });
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  function tryLoad() {
+    if (requested) {
+      return true;
+    }
+    if (alreadyPresent()) {
+      requested = true;
+      return true;
+    }
+    if (!window.HvScriptManager) {
+      return false;
+    }
+    requested = true;
+    const script = document.createElement('script');
+    script.src = MASK_SETTINGS_SRC;
+    script.async = true;
+    (document.head || document.documentElement).appendChild(script);
+    return true;
+  }
+
+  if (tryLoad()) {
+    return;
+  }
+
+  // менеджер может появиться позже (другой порядок script), но не позднее 15 секунд
+  const timer = window.setInterval(function () {
+    if (tryLoad()) {
+      window.clearInterval(timer);
+    }
+  }, 100);
+  window.setTimeout(function () {
+    window.clearInterval(timer);
+  }, 15000);
+})();
+
