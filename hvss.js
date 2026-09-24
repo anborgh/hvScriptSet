@@ -188,7 +188,7 @@ const hvScriptSet = {
                 .changeList[change].field)[0];
               switch (changedPosts[_i].changeList[change].type) {
                 case 'html':
-                  let content = unescapePostHtml(changedPosts[_i].changeList[change].content).slice(0, 999);
+                  let content = truncateText(unescapePostHtml(changedPosts[_i].changeList[change].content), 999);
                   const violation = setSafeHtml(fieldEl, content);
                   if (violation) {
                     console.error(`Что-то не так с маской в посте #${changedPosts[_i].postId}`);
@@ -207,25 +207,23 @@ const hvScriptSet = {
                   fieldEl.innerHTML = __content.length > 999 ? __content.slice(0, 999) : __content;
                   break;
                 case 'text':
-                  let _content = changedPosts[_i].changeList[change].content
-                    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  let _content = htmlToText(changedPosts[_i].changeList[change].content);
                   switch (change) {
                     case 'author':
-                      fieldEl.innerHTML = _content.length > 25 ? _content.slice(0, 25) : _content;
+                      _content = truncateText(_content, 25);
+                      fieldEl.textContent = _content;
                       if (!canQuoteMask) break;
                       $(`#${changedPosts[_i].postId}`).find('.pl-quote a').attr('href', `javascript:quote(${toJsUrlString(_content)}, ${changedPosts[_i].postId.slice(1)})`);
                       break;
                     case 'title':
-                      fieldEl.innerHTML = _content.length > 50 ? _content.slice(0, 50) : _content;
+                      fieldEl.textContent = truncateText(_content, 50);
                       break;
                     default:
-                      fieldEl.innerHTML = _content.length > 999 ? _content.slice(0, 999) : _content;
+                      fieldEl.textContent = truncateText(_content, 999);
                   }
                   break;
                 case 'link':
-                  var linkContent = changedPosts[_i].changeList[change].content.length > 25 ?
-                    changedPosts[_i].changeList[change].content.slice(0, 25) :
-                    changedPosts[_i].changeList[change].content
+                  var linkContent = truncateText(htmlToText(changedPosts[_i].changeList[change].content), 25);
                   fieldEl.querySelector('a').textContent = linkContent;
 
                   if (change === 'author' && canQuoteMask) {
@@ -485,7 +483,7 @@ const hvScriptSet = {
           }
           break;
         case 'author':
-          if (value.length > 25) {
+          if (textLength(value) > 25) {
             errorList[field] = 'Поле [Ник] не должно содержать больше 25 символов';
           } else {
             str = value !== '' ? value : window.UserLogin;
@@ -506,7 +504,7 @@ const hvScriptSet = {
           }
           break;
         case 'title':
-          if (value.length > 50) {
+          if (textLength(value) > 50) {
             errorList[field] = 'Поле [Статус] не должно содержать больше 50 символов';
           } else {
             delete errorList[field];
@@ -517,7 +515,7 @@ const hvScriptSet = {
           }
           break;
         default:
-          if (value.length > 999) {
+          if (textLength(value) > 999) {
             errorList[field] = `Поле [${changeList[field].title}] не должно содержать больше 999 символов`;
           } else {
             delete errorList[field];
@@ -1718,6 +1716,26 @@ const hvScriptSet = {
       }
       hardenRendered(element);
       return null;
+    }
+
+    function splitGraphemes(str) {
+      if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        return Array.from(new Intl.Segmenter('ru', { granularity: 'grapheme' }).segment(str), item => item.segment);
+      }
+      return Array.from(str);
+    }
+
+    function textLength(str) {
+      return splitGraphemes(String(str)).length;
+    }
+
+    function truncateText(str, max) {
+      const graphemes = splitGraphemes(String(str));
+      return graphemes.length > max ? graphemes.slice(0, max).join('') : String(str);
+    }
+
+    function htmlToText(html) {
+      return parseInert(html).textContent;
     }
 
     function unescapePostHtml(str) {
