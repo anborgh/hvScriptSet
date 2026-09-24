@@ -8,6 +8,7 @@
  *
  * Что нового:
  * 1. Аудит безопасности html-полей
+ * 2. Минорные фиксы
  */
 
 const hvScriptSet = {
@@ -192,7 +193,7 @@ const hvScriptSet = {
                   if (violation) {
                     console.error(`Что-то не так с маской в посте #${changedPosts[_i].postId}`);
                     if (window.GroupID === 1 || window.GroupID === 2) {
-                      $.jGrowl(`Что-то не так с маской в посте <a href="#${changedPosts[_i].postId}">#${changedPosts[_i].postId}</a>: ${escapeHtml(violation)}.<br>Пост подсвечен красным.<br><i>Сообщение показано только администрации.</i>`, {
+                      $.jGrowl(`Что-то не так с маской в посте <a href="#${changedPosts[_i].postId}">#${changedPosts[_i].postId}</a>: ${escapeHtml(violation)}.<br>Пост подсвечен красным. Подозрительный код скрыт.<br><i>Сообщение показано только администрации.</i>`, {
                         header: 'Маска профиля',
                         sticky: true
                       });
@@ -714,7 +715,7 @@ const hvScriptSet = {
                 input.type = 'text';
                 input.id = 'mask_' + mask;
             }
-            input.addEventListener('blur', () => {
+            const applyFieldValue = () => {
               let idField = input.id.split('mask_')[1];
               if (input.value !== '' && !checkHtml(input.value)) {
                 tmpMask[idField] = {
@@ -726,7 +727,8 @@ const hvScriptSet = {
               }
               changeMaskForm(idField, input.value);
               updateMaskButtonIndicator();
-            });
+            };
+            input.addEventListener('blur', applyFieldValue);
             let label = document.createElement('label');
             label.for = 'mask_' + mask;
 
@@ -745,7 +747,7 @@ const hvScriptSet = {
                 templateButton.title = 'Вставить шаблон';
                 templateButton.addEventListener('click', function () {
                   fillInput(input, changeList[mask].defaultCode);
-                  changeMaskForm(mask, input.value);
+                  applyFieldValue();
                 });
                 label.insertBefore(templateButton, label.querySelector('b'));
               }
@@ -767,7 +769,7 @@ const hvScriptSet = {
                 templateSelect.addEventListener('change', event => {
                   const value = event.target.value;
                   fillInput(input, value);
-                  changeMaskForm(mask, input.value);
+                  applyFieldValue();
                 })
                 label.insertBefore(templateSelect, label.querySelector('b'));
               }
