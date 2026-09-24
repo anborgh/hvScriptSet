@@ -23,26 +23,17 @@
     showPreview: true,
   };
 
-  const FORBIDDEN_HTML_TAGS = ['input', 'button', 'script', 'iframe', 'frame', 'style', 'audio', 'video', 'form',
-    'footer', 'header', 'head', 'html', 'map', 'select', 'textarea', 'xmp', 'object', 'embed', 'noembed',
-    'var', 'meta', 'animate', 'xss', 'main', 'aside', 'dialog', 'noscript', 'noframes', 'title', 'set', 'use', 'base', 'math'];
-  const FORBIDDEN_HTML_EVENTS = ['onblur', 'onchange', 'onclick', 'ondblclick', 'onfocus', 'onkeydown', 'onkeypress',
-    'onkeyup', 'onload', 'onmousedown', 'onmousemove', 'onmouseout', 'onmouseover', 'onmouseup', 'onreset',
-    'onselect', 'onscroll', 'onsubmit', 'onunload', 'javascript', 'onerror', 'oninput', 'onafterprint',
-    'onbeforeprint', 'onbeforeunload', 'onhashchange', 'onmessage', 'onoffline', 'ononline', 'onpagehide',
-    'onpageshow', 'onpopstate', 'onresize', 'onstorage', 'oncontextmenu', 'oninvalid', 'onreset', 'onsearch',
-    'ondrag', 'ondragend', 'ondragenter', 'ondragleave', 'ondragover', 'ondragstart', 'ondrop', 'onmousedown',
-    'onmousewheel', 'onwheel', 'oncopy', 'oncut', 'onpaste', 'onabort', 'oncanplay', 'oncanplaythrough',
-    'oncuechange', 'ondurationchange', 'onemptied', 'onended', 'onerror', 'onloadeddata', 'onloadedmetadata',
-    'onloadstart', 'onpause', 'onplay', 'onplaying', 'onprogress', 'onratechange', 'onseeked', 'onseeking',
-    'onstalled', 'onsuspend', 'ontimeupdate', 'onvolumechange', 'onwaiting', 'onbegin', 'onanimationend',
-    'onanimationiteration', 'onbeforescriptexecute', 'onbounce', 'onend', 'onfocusin', 'onloadmetadata', 'onrepeat',
-    'onscrollend', 'ontoggle', 'ontransitioncancel', 'ontransitionend', 'ontransitionrun', 'ontransitionstart',
-    'onunhandledrejection', 'onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart',
-    'onwebkittransitionend', 'onauxclick', 'onbeforecopy', 'contentEditable', 'onbeforecut', 'popovertarget',
-    'onbeforetoggle', 'autofocus', 'drarrable', 'onfullscreenchange', 'required', 'onmouseleave', 'autoplay', 'onpointerdown',
-    'onpointerenter', 'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup',
-    'onselectionchange', 'onselectstart', 'contextmenu', 'ontouched', 'ontouchmove', 'ontouchstart'];
+  const FORBIDDEN_HTML_TAGS = ['input', 'button', 'script', 'iframe', 'frame', 'frameset', 'style', 'audio', 'video',
+    'form', 'footer', 'header', 'head', 'html', 'body', 'map', 'select', 'textarea', 'xmp', 'object', 'embed',
+    'noembed', 'var', 'meta', 'animate', 'animatemotion', 'animatetransform', 'xss', 'main', 'aside', 'dialog',
+    'noscript', 'noframes', 'title', 'set', 'use', 'base', 'math', 'link', 'template', 'portal', 'applet', 'slot',
+    'plaintext', 'listing', 'source', 'track', 'param', 'fencedframe', 'handler', 'listener', 'discard',
+    'foreignobject'];
+  const FORBIDDEN_HTML_ATTRIBUTES = ['id', 'name', 'form', 'formaction', 'action', 'srcdoc', 'autofocus',
+    'contenteditable', 'popover', 'popovertarget', 'popovertargetaction', 'command', 'commandfor', 'is',
+    'http-equiv', 'autoplay', 'ping', 'xmlns'];
+  const URL_HTML_ATTRIBUTES = ['href', 'src', 'action', 'formaction', 'background', 'poster', 'data', 'codebase',
+    'cite', 'longdesc', 'dynsrc', 'lowsrc', 'srcset', 'xlink:href'];
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -52,23 +43,61 @@
     return String(raw || '').replace(/[^A-Za-z]/g, '');
   }
 
-  function getStrToHtmlRejection(str) {
-    const source = String(str || '');
+  function isForbiddenUrl(element, value) {
+    const url = value.replace(/[\u0000-\u0020\u007f-\u009f]/g, '').toLowerCase();
+    if (/^(javascript|vbscript|livescript|mocha):/.test(url)) {
+      return true;
+    }
+    if (url.startsWith('data:')) {
+      return !(element.localName === 'img' && /^data:image\/(png|gif|jpe?g|webp|avif);/.test(url));
+    }
+    return false;
+  }
+
+  function getAttributeViolation(element, attr) {
+    const name = attr.name.toLowerCase();
+    const tag = element.localName.toLowerCase();
+    const forbiddenAttribute = `запрещённый атрибут ${attr.name} в теге <${tag}>`;
+    const forbiddenValue = `недопустимое значение атрибута ${attr.name} в теге <${tag}>`;
+    if (name.startsWith('on')) {
+      return forbiddenAttribute;
+    }
+    if (FORBIDDEN_HTML_ATTRIBUTES.includes(name) || name.startsWith('xmlns:')) {
+      return forbiddenAttribute;
+    }
+    if (URL_HTML_ATTRIBUTES.includes(name) || attr.localName === 'href') {
+      const isForbidden = name === 'srcset'
+        ? attr.value.split(',').some(part => isForbiddenUrl(element, part.trim()))
+        : isForbiddenUrl(element, attr.value);
+      return isForbidden ? forbiddenValue : '';
+    }
+    if (name === 'style' && /expression\s*\(|-moz-binding|behavior\s*:|javascript:/i.test(attr.value)) {
+      return forbiddenValue;
+    }
+    return '';
+  }
+
+  function getHtmlViolation(html) {
+    const source = String(html || '');
     if (!source) {
       return '';
     }
-    for (let i = 0; i < FORBIDDEN_HTML_TAGS.length; i++) {
-      if (new RegExp('(<|&lt;)' + FORBIDDEN_HTML_TAGS[i]).exec(source)) {
-        return 'запрещённый тег ' + FORBIDDEN_HTML_TAGS[i];
+    const template = document.createElement('template');
+    template.innerHTML = source;
+    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+    while (walker.nextNode()) {
+      const element = walker.currentNode;
+      const tag = element.localName.toLowerCase();
+      if (FORBIDDEN_HTML_TAGS.includes(tag)) {
+        return `запрещённый тег <${tag}>`;
       }
-    }
-    for (let i = 0; i < FORBIDDEN_HTML_EVENTS.length; i++) {
-      if (new RegExp(FORBIDDEN_HTML_EVENTS[i] + '=').exec(source)) {
-        return 'запрещённый атрибут/событие ' + FORBIDDEN_HTML_EVENTS[i];
+      const attributes = Array.prototype.slice.call(element.attributes);
+      for (let i = 0; i < attributes.length; i++) {
+        const violation = getAttributeViolation(element, attributes[i]);
+        if (violation) {
+          return violation;
+        }
       }
-    }
-    if (/&lt;(.*?)?( xlink:| id=(.*?)?)/.test(source)) {
-      return 'запрещённые свойства тега (xlink: / id=)';
     }
     return '';
   }
@@ -289,6 +318,9 @@
 #pun-admain .adinput img.hv-btn-preview { max-height: 20px; }
 #pun-admain #changelistForm.adcontainer { margin-top: 4px; }
 #pun-admain .hv-dup-tag { color: #a33; font-size: .9em; }
+.hvss-settings-dialog .af-templates input.af-invalid { border: solid 1px #f00; }
+.hvss-settings-dialog .af-templates .af-violation { color: #a33; font-size: .9em; margin: -2px 0 6px; }
+.hvss-settings-dialog .af-templates .af-entry .af-violation { grid-column: 1 / -1; margin: 0; }
 #pun-admain .fielditem .tcl span { color: #777; }
 #pun-admain .button-danger { color: #a33; }
 .hvss-settings-dialog { display: none; }
@@ -603,6 +635,13 @@
           const dup = mainTag && tagCounts[mainTag] > 1
             ? '<div class="hv-dup-tag">BB-тэг должен быть уникальным</div>'
             : '';
+          const badTemplates = (item.type || 'html') === 'html'
+            ? templates
+              .map((t, index) => ({ name: t.name || `№${index + 1}`, reason: getHtmlViolation(t.template) }))
+              .filter(t => t.reason)
+              .map(t => `<div class="hv-dup-tag">Шаблон «${escapeHtml(t.name)}»: ${escapeHtml(t.reason)}</div>`)
+              .join('')
+            : '';
           const desc = item.description ? `<div>${escapeHtml(item.description)}</div>` : '';
           const html = `<tr class="fielditem" data-id="${escapeAttr(key)}">
           <td class="tcl">
@@ -610,6 +649,7 @@
               <b>${escapeHtml(item.title || key)}</b> • <span>${escapeHtml(item.class || key)}</span><br />
               [${escapeHtml(item.tag || '')}] ${escapeHtml(item.type || 'html')}
               ${dup}
+              ${badTemplates}
             </div>
           </td>
           <td class="tc2">
@@ -902,6 +942,8 @@
         typeSelect.value = ['html', 'bbcode', 'text'].indexOf(type) !== -1 ? type : 'html';
         document.getElementById('af_description').value = item.description || '';
         this._afRenderTemplates(this._afGetTemplates(item.defaultCode));
+        document.getElementById('af_templates').oninput = () => this._afValidateTemplates();
+        typeSelect.onchange = () => this._afValidateTemplates();
 
         document.getElementById('af_addTemplate').onclick = () => {
           const container = document.getElementById('af_templates');
@@ -915,6 +957,7 @@
           } else {
             container.appendChild(this._afCreateEntry({ name: '', template: '' }));
           }
+          this._afValidateTemplates();
         };
         document.getElementById('af_cancelField').onclick = () => this.closeDialog('editAdditionalFieldForm');
         document.getElementById('af_deleteField').style.display = isNew ? 'none' : '';
@@ -967,21 +1010,12 @@
             const s = container.querySelector('.af-single');
             defaultCode = s ? s.value : '';
           }
-          if (typeValue === 'html') {
-            const templateItems = Array.isArray(defaultCode)
-              ? defaultCode
-              : (defaultCode ? [{ name: '', template: defaultCode }] : []);
-            const badTemplates = [];
-            templateItems.forEach(tpl => {
-              const reason = getStrToHtmlRejection(tpl.template);
-              if (reason) {
-                badTemplates.push('<br />• ' + reason);
-              }
-            });
-            if (badTemplates.length) {
-              $.jGrowl('Шаблон не пройдёт проверку безопасности маски: ' + badTemplates.join('; '));
-              return;
-            }
+          const badTemplates = this._afValidateTemplates();
+          if (badTemplates.length) {
+            $.jGrowl('Шаблон не пройдёт проверку безопасности маски:' + badTemplates
+              .map(t => `<br />• «${escapeHtml(t.name)}»: ${escapeHtml(t.reason)}`)
+              .join(''));
+            return;
           }
           const fieldKey = fieldClass;
           if (key && key !== fieldKey && this.settings.changeList[key]) {
@@ -1034,6 +1068,29 @@
         } else {
           templates.forEach(t => container.appendChild(this._afCreateEntry(t)));
         }
+        this._afValidateTemplates();
+      },
+
+      _afValidateTemplates: function () {
+        const container = document.getElementById('af_templates');
+        const isHtml = document.getElementById('af_type').value === 'html';
+        const bad = [];
+        container.querySelectorAll('.af-violation').forEach(el => el.remove());
+        container.querySelectorAll('.af-single, .af-tcode').forEach((input, index) => {
+          const reason = isHtml ? getHtmlViolation(input.value) : '';
+          input.classList.toggle('af-invalid', Boolean(reason));
+          if (!reason) {
+            return;
+          }
+          const entry = input.closest('.af-entry');
+          const name = (entry && entry.querySelector('.af-tname').value.trim()) || `№${index + 1}`;
+          bad.push({ name, reason });
+          const note = document.createElement('div');
+          note.className = 'af-violation';
+          note.textContent = reason;
+          (entry || input).insertAdjacentElement(entry ? 'beforeend' : 'afterend', note);
+        });
+        return bad;
       },
 
       _afCreateEntry: function (tpl) {
@@ -1062,6 +1119,8 @@
             this._afRenderTemplates([{ name: '', template: lastCode }]);
           } else if (entries.length === 0) {
             this._afRenderTemplates([]);
+          } else {
+            this._afValidateTemplates();
           }
         });
         div.appendChild(nameInput);
