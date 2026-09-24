@@ -2,12 +2,12 @@
 
 /**
  * hvScriptSet
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. Код маски можно вставить/скрыть кнопкой в превью ответа
+ * 1. Аудит безопасности html-полей
  */
 
 const hvScriptSet = {
@@ -187,21 +187,19 @@ const hvScriptSet = {
                 .changeList[change].field)[0];
               switch (changedPosts[_i].changeList[change].type) {
                 case 'html':
-                  let content = strToHtml(changedPosts[_i].changeList[change].content);
-                  if (content === '') {
+                  let content = unescapePostHtml(changedPosts[_i].changeList[change].content).slice(0, 999);
+                  const violation = setSafeHtml(fieldEl, content);
+                  if (violation) {
                     console.error(`Что-то не так с маской в посте #${changedPosts[_i].postId}`);
                     if (window.GroupID === 1 || window.GroupID === 2) {
-                      let errorMess = document.getElementById('admin_msg1');
-                      if (errorMess) {
-                        errorMess.innerHTML = `Что-то не так с маской в посте #${changedPosts[_i].postId}. Он подсвечен красным.<br><i>Сообщение показано только администрации.</i>`;
-                        errorMess.style.display = 'block';
-                        errorMess.style.zIndex = 10000;
-                      };
+                      $.jGrowl(`Что-то не так с маской в посте <a href="#${changedPosts[_i].postId}">#${changedPosts[_i].postId}</a>: ${escapeHtml(violation)}.<br>Пост подсвечен красным.<br><i>Сообщение показано только администрации.</i>`, {
+                        header: 'Маска профиля',
+                        sticky: true
+                      });
                       document.getElementById(changedPosts[_i].postId)
                           .style.border = 'solid 1px #f00';
                     }
                   }
-                  fieldEl.innerHTML = content.length > 999 ? content.slice(0, 999) : content;
                   break;
                 case 'bbcode':
                   let __content = changedPosts[_i].changeList[change].content;
@@ -209,12 +207,12 @@ const hvScriptSet = {
                   break;
                 case 'text':
                   let _content = changedPosts[_i].changeList[change].content
-                    .replace(/</i, '&lt').replace(/>/i, '&rt');
+                    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
                   switch (change) {
                     case 'author':
                       fieldEl.innerHTML = _content.length > 25 ? _content.slice(0, 25) : _content;
                       if (!canQuoteMask) break;
-                      $(`#${changedPosts[_i].postId}`).find('.pl-quote a').attr('href', "javascript:quote('" + _content.replace(/\'/i, '\\\'') + "', " + changedPosts[_i].postId.slice(1) + ")");
+                      $(`#${changedPosts[_i].postId}`).find('.pl-quote a').attr('href', `javascript:quote(${toJsUrlString(_content)}, ${changedPosts[_i].postId.slice(1)})`);
                       break;
                     case 'title':
                       fieldEl.innerHTML = _content.length > 50 ? _content.slice(0, 50) : _content;
@@ -233,8 +231,8 @@ const hvScriptSet = {
                     const nickLink = fieldEl.querySelector('a');
                     nickLink.href = nickLink.href.includes('profile')
                       ? nickLink.href
-                      : "javascript:to('" + linkContent.replace(/\'/i, '\\\'') + "')";
-                    $('#' + changedPosts[_i].postId).find('.pl-quote a').attr('href', "javascript:quote('" + linkContent.replace(/\'/i, '\\\'') + "', " + changedPosts[_i].postId.slice(1) + ")");
+                      : `javascript:to(${toJsUrlString(linkContent)})`;
+                    $('#' + changedPosts[_i].postId).find('.pl-quote a').attr('href', `javascript:quote(${toJsUrlString(linkContent)}, ${changedPosts[_i].postId.slice(1)})`);
                   }
                   break;
                 case 'signature':
@@ -533,16 +531,20 @@ const hvScriptSet = {
               case 'bbcode':
                 delete errorList[field];
                 updatePreviewField(field, node => {
-                  node.innerHTML = bbcodeToHtml(str);
+                  const violation = setSafeHtml(node, bbcodeToHtml(str));
+                  if (violation) {
+                    errorList[field] = `В поле [${changeList[field].title}] ${violation}`;
+                  }
                 });
                 break;
               default:
-                if (checkHtml(str)) {
-                  errorList[field] = `В поле [${changeList[field].title}] недопустимые теги`;
+                const violation = checkHtml(str);
+                if (violation) {
+                  errorList[field] = `В поле [${changeList[field].title}] ${violation}`;
                 } else {
                   delete errorList[field];
                   updatePreviewField(field, node => {
-                    node.innerHTML = str;
+                    setSafeHtml(node, str);
                   });
                 }
             }
@@ -560,7 +562,7 @@ const hvScriptSet = {
         for (let error in errorList) {
           if (errorList.hasOwnProperty(error)) {
             let li = document.createElement('li');
-            li.innerHTML = `<li> ! ${errorList[error]}</li>`;
+            li.textContent = ` ! ${errorList[error]}`;
             errorListBlock.appendChild(li);
           }
         }
@@ -887,9 +889,10 @@ const hvScriptSet = {
 
         for (let item in changeList) {
           if (changeList.hasOwnProperty(item) && item !== 'avatar' && mymask[item]) {
-            if (!checkHtml(mymask[item].value.toString())) {
+            const value = mymask[item].value.toString();
+            if (!checkHtml(value)) {
               infoBlock += '<div class="' + item + '"><b>' + changeList[item].title + ':</b> ' +
-                mymask[item].value + '</div>';
+                (changeList[item].type === 'html' ? value : escapeHtml(value)) + '</div>';
             }
           }
         }
@@ -1327,7 +1330,6 @@ const hvScriptSet = {
 
     function injectMaskToMessage() {
       if (!responseMessageField) return;
-      // Код уже в поле (в т.ч. правленный вручную) — оставляем как есть и запоминаем его
       if (isMaskCodeInMessage()) {
         adoptMaskFromMessageIfPresent();
         return;
@@ -1584,101 +1586,187 @@ const hvScriptSet = {
       return `[block=hvmask]${str}[/block]`;
     }
 
-    const forbiddenTags = ['input', 'button', 'script', 'iframe', 'frame', 'style', 'audio', 'video', 'form',
-      'footer', 'header', 'head', 'html', 'map', 'select', 'textarea', 'xmp', 'object', 'embed', 'noembed',
-      'var', 'meta', 'animate','xss','main','aside','dialog','noscript','noframes','title','set','use','base','math'];
-    const forbiddenEvents = ['onblur', 'onchange', 'onclick', 'ondblclick', 'onfocus', 'onkeydown', 'onkeypress',
-      'onkeyup', 'onload', 'onmousedown', 'onmousemove', 'onmouseout', 'onmouseover', 'onmouseup', 'onreset',
-      'onselect', 'onscroll', 'onsubmit', 'onunload', 'javascript', 'onerror', 'oninput', 'onafterprint',
-      'onbeforeprint', 'onbeforeunload', 'onhashchange', 'onmessage', 'onoffline', 'ononline', 'onpagehide',
-      'onpageshow', 'onpopstate', 'onresize', 'onstorage', 'oncontextmenu', 'oninvalid', 'onreset', 'onsearch',
-      'ondrag', 'ondragend', 'ondragenter', 'ondragleave', 'ondragover', 'ondragstart', 'ondrop', 'onmousedown',
-      'onmousewheel', 'onwheel', 'oncopy', 'oncut', 'onpaste', 'onabort', 'oncanplay', 'oncanplaythrough',
-      'oncuechange', 'ondurationchange', 'onemptied', 'onended', 'onerror', 'onloadeddata', 'onloadedmetadata',
-      'onloadstart', 'onpause', 'onplay', 'onplaying', 'onprogress', 'onratechange', 'onseeked', 'onseeking',
-      'onstalled', 'onsuspend', 'ontimeupdate', 'onvolumechange', 'onwaiting','onbegin','onanimationend',
-      'onanimationiteration','onbeforescriptexecute','onbounce','onend','onfocusin','onloadmetadata','onrepeat',
-      'onscrollend','ontoggle','ontransitioncancel','ontransitionend','ontransitionrun','ontransitionstart',
-      'onunhandledrejection','onwebkitanimationend','onwebkitanimationiteration','onwebkitanimationstart',
-      'onwebkittransitionend','onauxclick','onbeforecopy','contentEditable','onbeforecut','popovertarget',
-      'onbeforetoggle','autofocus','drarrable','onfullscreenchange','required','onmouseleave','autoplay','onpointerdown',
-      'onpointerenter','onpointerleave','onpointermove','onpointerout','onpointerover','onpointerrawupdate','onpointerup',
-      'onselectionchange','onselectstart','contextmenu','ontouched','ontouchmove','ontouchstart'];
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const MATHML_NS = 'http://www.w3.org/1998/Math/MathML';
+    const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
-    function strToHtml(str) {
-      let forbiddenTag = '';
-      let forbiddenTagsCheck = false;
-      for (let i = 0; i < forbiddenTags.length; i++) {
-        let pattern = new RegExp('(<|&lt;)' + forbiddenTags[i]);
-        forbiddenTagsCheck = pattern.exec(str);
-        if (forbiddenTagsCheck) {
-          forbiddenTag = forbiddenTagsCheck[0].replace('&lt;', '');
-          console.error(`Forbidden tag <${forbiddenTag}> in mask`);
-          return '';
+    const forbiddenTags = ['input', 'button', 'script', 'iframe', 'frame', 'frameset', 'style', 'audio', 'video',
+      'form', 'footer', 'header', 'head', 'html', 'body', 'map', 'select', 'textarea', 'xmp', 'object', 'embed',
+      'noembed', 'var', 'meta', 'animate', 'animatemotion', 'animatetransform', 'xss', 'main', 'aside', 'dialog',
+      'noscript', 'noframes', 'title', 'set', 'use', 'base', 'math', 'link', 'template', 'portal', 'applet', 'slot',
+      'plaintext', 'listing', 'source', 'track', 'param', 'fencedframe', 'handler', 'listener', 'discard',
+      'foreignobject'];
+
+    const forbiddenAttributes = ['id', 'name', 'form', 'formaction', 'action', 'srcdoc', 'autofocus',
+      'contenteditable', 'popover', 'popovertarget', 'popovertargetaction', 'command', 'commandfor', 'is',
+      'http-equiv', 'autoplay', 'ping', 'xmlns'];
+    const urlAttributes = ['href', 'src', 'action', 'formaction', 'background', 'poster', 'data', 'codebase',
+      'cite', 'longdesc', 'dynsrc', 'lowsrc', 'srcset', 'xlink:href'];
+
+    let nativeSanitizer;
+
+    // Sanitizer API
+    function getNativeSanitizer() {
+      if (nativeSanitizer !== undefined) return nativeSanitizer;
+      nativeSanitizer = null;
+      if (typeof window.Sanitizer !== 'function' || typeof Element.prototype.setHTML !== 'function') {
+        return nativeSanitizer;
+      }
+      try {
+        const removeElements = [];
+        forbiddenTags.forEach(name => {
+          removeElements.push({ name, namespace: 'http://www.w3.org/1999/xhtml' });
+          removeElements.push({ name, namespace: SVG_NS });
+        });
+        ['animateMotion', 'animateTransform', 'foreignObject'].forEach(name =>
+          removeElements.push({ name, namespace: SVG_NS }));
+        removeElements.push({ name: 'math', namespace: MATHML_NS });
+        const removeAttributes = forbiddenAttributes
+          .filter(name => name !== 'xmlns')
+          .map(name => ({ name, namespace: null }));
+        removeAttributes.push({ name: 'href', namespace: XLINK_NS });
+        nativeSanitizer = new window.Sanitizer({ removeElements, removeAttributes, comments: false });
+      } catch (e) {
+        console.warn('hvScriptSet: Sanitizer API недоступен, используется встроенная проверка', e);
+        nativeSanitizer = null;
+      }
+      return nativeSanitizer;
+    }
+
+    function isForbiddenUrl(element, value) {
+      const url = value.replace(/[\u0000- \u007f-\u009f]/g, '').toLowerCase();
+      if (/^(javascript|vbscript|livescript|mocha):/.test(url)) return true;
+      if (url.startsWith('data:')) {
+        return !(element.localName === 'img' && /^data:image\/(png|gif|jpe?g|webp|avif);/.test(url));
+      }
+      return false;
+    }
+
+    function isForbiddenAttribute(element, attr) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on')) return true;
+      if (forbiddenAttributes.includes(name) || name.startsWith('xmlns:')) return true;
+      if (urlAttributes.includes(name) || attr.localName === 'href') {
+        return name === 'srcset'
+          ? attr.value.split(',').some(part => isForbiddenUrl(element, part.trim()))
+          : isForbiddenUrl(element, attr.value);
+      }
+      if (name === 'style') {
+        return /expression\s*\(|-moz-binding|behavior\s*:|javascript:/i.test(attr.value);
+      }
+      return false;
+    }
+
+    function parseInert(html) {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      return template.content;
+    }
+
+    function findHtmlViolation(fragment) {
+      const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_ELEMENT);
+      while (walker.nextNode()) {
+        const element = walker.currentNode;
+        const tag = element.localName.toLowerCase();
+        if (forbiddenTags.includes(tag)) return `запрещённый тег <${tag}>`;
+        for (const attr of Array.from(element.attributes)) {
+          if (isForbiddenAttribute(element, attr)) return `запрещённый атрибут ${attr.name} в теге <${tag}>`;
         }
       }
-      for (let _i2 = 0; _i2 < forbiddenEvents.length; _i2++) {
-        let _pattern = new RegExp(forbiddenEvents[_i2] + '=');
-        forbiddenTagsCheck = _pattern.exec(str);
-        if (forbiddenTagsCheck) {
-          forbiddenTag = forbiddenTagsCheck[0].replace('&lt;', '');
-          console.error(`Forbidden event <${forbiddenTag}> in mask`);
-          return '';
+      return null;
+    }
+
+    function hardenRendered(root) {
+      root.querySelectorAll('[style]').forEach(element => {
+        if (element.style.position === 'fixed') {
+          element.style.removeProperty('position');
         }
+      });
+      root.querySelectorAll('a[href]').forEach(link => {
+        link.setAttribute('rel', 'nofollow noopener noreferrer ugc');
+      });
+    }
+
+    function checkHtml(html) {
+      const violation = findHtmlViolation(parseInert(html));
+      if (violation) console.error(violation);
+      return violation;
+    }
+
+    /*
+     * Безопасная вставка пользовательского html.
+     * Сначала всегда работает встроенная проверка (маска с запрещённым содержимым отклоняется целиком).
+     * Затем, если браузер поддерживает Sanitizer API, html вставляется через Element.setHTML —
+     * это второй, независимый уровень защиты. Иначе вставляются уже проверенные узлы, без повторного разбора.
+     * Возвращает описание нарушения, если html отклонён, иначе null.
+     */
+    function setSafeHtml(element, html) {
+      const fragment = parseInert(html);
+      const violation = findHtmlViolation(fragment);
+      if (violation) {
+        console.error(violation);
+        element.textContent = '';
+        return violation;
       }
-      let check = /&lt;(.*?)?( xlink:| id=(.*?)?)/.test(str);
-      if (check) {
-        console.error('Forbidden tag properties in mask');
+      const sanitizer = getNativeSanitizer();
+      if (sanitizer) {
+        element.setHTML(html, { sanitizer });
+      } else {
+        element.replaceChildren(fragment);
       }
-      return check ? '' : str.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      hardenRendered(element);
+      return null;
+    }
+
+    function unescapePostHtml(str) {
+      return str.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function toJsUrlString(str) {
+      return JSON.stringify(String(str)).replace(/%/g, '%25');
     }
 
     function bbcodeToHtml(str) {
-      let tempStr = str.replace(/</gi, '&lt;');
+      let tempStr = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const cssValue = '([#\\w\\s,.()%-]+?)';
 
       tempStr = tempStr.replace(/\n/gi, `<br />`);
 
-      tempStr = tempStr.replace(/\[font=(.*?)\](.*?)\[\/font\]/gi, `<span style="font-family: $1">$2</span>`);
-      tempStr = tempStr.replace(/\[size=(\d*?)\](.*?)\[\/size\]/gi, `<span style="font-family: $1px">$2</span>`);
+      tempStr = tempStr.replace(new RegExp(`\\[font=${cssValue}\\](.*?)\\[\\/font\\]`, 'gi'), `<span style="font-family: $1">$2</span>`);
+      tempStr = tempStr.replace(/\[size=(\d+?)\](.*?)\[\/size\]/gi, `<span style="font-size: $1px">$2</span>`);
       tempStr = tempStr.replace(/\[b\](.*?)\[\/b\]/gi, `<strong>$1</strong>`);
 
       tempStr = tempStr.replace(/\[i](.*?)\[\/i\]/gi, `<span style="font-style: italic">$1</span>`);
       tempStr = tempStr.replace(/\[u\](.*?)\[\/u\]/gi, `<em class="bbuline">$1</em>`);
       tempStr = tempStr.replace(/\[s\](.*?)\[\/s\]/gi, `<del>$1</del>`);
 
-      tempStr = tempStr.replace(/\[align=([left|center|right]*?)\](.*?)\[\/align\]/gi,
+      tempStr = tempStr.replace(/\[align=(left|center|right)\](.*?)\[\/align\]/gi,
         `<span style="display: block; text-align: $1">$2</span>`);
-      tempStr = tempStr.replace(/\[url=(https?:\/\/.*?)\](.*?)\[\/url\]/gi,
+      tempStr = tempStr.replace(/\[url=(https?:\/\/[^\s\]]*?)\](.*?)\[\/url\]/gi,
         `<a href="$1" rel="nofollow" target="_blank">$2</a>`);
-      tempStr = tempStr.replace(/\[url\](https?:\/\/.*?)\[\/url\]/gi,
+      tempStr = tempStr.replace(/\[url\](https?:\/\/[^\s\[]*?)\[\/url\]/gi,
         `<a href="$1" rel="nofollow" target="_blank">$1</a>`);
-      tempStr = tempStr.replace(/\[color=(.*?)\](.*?)\[\/color\]/gi, `<span style="color: $1">$2</span>`);
+      tempStr = tempStr.replace(new RegExp(`\\[color=${cssValue}\\](.*?)\\[\\/color\\]`, 'gi'), `<span style="color: $1">$2</span>`);
 
-      tempStr = tempStr.replace(/\[img\](https?:\/\/.*?\.(?:jpg|png|jpeg|gif))\[\/img\]/gi, `<img class="postimg" src="$1" alt="$1">`);
+      tempStr = tempStr.replace(/\[img\](https?:\/\/[^\s\[]*?\.(?:jpg|png|jpeg|gif))\[\/img\]/gi, `<img class="postimg" src="$1" alt="$1">`);
 
-      tempStr = tempStr.replace(/\[you\]/gi, window.UserLogin);
+      tempStr = tempStr.replace(/\[you\]/gi, escapeHtml(window.UserLogin));
       tempStr = tempStr.replace(/\[hr\]/gi, `<hr>`);
       tempStr = tempStr.replace(/\[sup\](.*?)\[\/sup\]/gi, `<sup>$1</sup>`);
       tempStr = tempStr.replace(/\[sub\](.*?)\[\/sub\]/gi, `<sub>$1</sub>`);
       tempStr = tempStr.replace(/\[mark\](.*?)\[\/mark\]/gi, `<span class="highlight-text">$1</span>`);
-      tempStr = tempStr.replace(/\[abbr="(.*?)"\](.*?)\[\/abbr\]/gi, `<abbr title="$1">$2</abbr>`);
+      tempStr = tempStr.replace(/\[abbr=&quot;(.*?)&quot;\](.*?)\[\/abbr\]/gi, `<abbr title="$1">$2</abbr>`);
 
       return tempStr;
-    }
-
-    function checkHtml(html) {
-      let forbiddenTagsCheck = false;
-      for (let i = 0; i < forbiddenTags.length; i++) {
-        let pattern = new RegExp('(<|&lt;)' + forbiddenTags[i]);
-        forbiddenTagsCheck = pattern.exec(html);
-        if (forbiddenTagsCheck) return true;
-      }
-      for (let _i3 = 0; _i3 < forbiddenEvents.length; _i3++) {
-        let _pattern2 = new RegExp(forbiddenEvents[_i3] + '=');
-        forbiddenTagsCheck = _pattern2.exec(html);
-        if (forbiddenTagsCheck) return true;
-      }
-      return forbiddenTagsCheck;
     }
 
     function checkImage(src) {
@@ -1942,4 +2030,3 @@ const hvScriptSet = {
     window.clearInterval(timer);
   }, 15000);
 })();
-
