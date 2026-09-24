@@ -2,13 +2,12 @@
 
 /**
  * hvScriptSet
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. Аудит безопасности html-полей
- * 2. Минорные фиксы
+ * 1. Фикс маски для ajax-сообщений.
  */
 
 const hvScriptSet = {
@@ -1267,6 +1266,19 @@ const hvScriptSet = {
       });
     }
 
+    function restoreMaskAfterPost() {
+      if (!responseMessageField) return;
+      const topicMaskState = getTopicMaskState(getCurrentTopicId());
+      if (topicMaskState && topicMaskState.remember && topicMaskState.mask
+        && Object.keys(topicMaskState.mask).length) {
+        fillForm(normalizeMaskByAccess(topicMaskState.mask));
+      } else {
+        clearMask();
+      }
+      updateRememberTopicMaskState();
+      updateInsertCodeButtonState();
+    }
+
     function isMaskCodeInMessage() {
       return Boolean(responseMessageField && /\[block=hvmask\]/i.test(responseMessageField.value));
     }
@@ -1564,6 +1576,9 @@ const hvScriptSet = {
           persistMaskToUserStorage(getEffectiveMask());
         }
         isPreparingMask = true;
+        setTimeout(() => {
+          isPreparingMask = false;
+        });
       }
 
       if (!form.dataset.hvMaskSubmitBind) {
@@ -1979,7 +1994,10 @@ const hvScriptSet = {
       init();
     }
     document.addEventListener('DOMContentLoaded', () => init());
-    $(document).on('pun_post', () => getPosts());
+    $(document).on('pun_post', () => {
+      getPosts();
+      restoreMaskAfterPost();
+    });
     $(document).on('pun_edit', () => getPosts());
     $(document).on('pun_preview', () => hidePreviewTags());
     $(document).on('pun_preedit', () => {
