@@ -1668,9 +1668,9 @@ const hvScriptSet = {
       while (walker.nextNode()) {
         const element = walker.currentNode;
         const tag = element.localName.toLowerCase();
-        if (forbiddenTags.includes(tag)) return `запрещённый тег <${tag}>`;
+        if (forbiddenTags.includes(tag)) return `опасный тег <${tag}>`;
         for (const attr of Array.from(element.attributes)) {
-          if (isForbiddenAttribute(element, attr)) return `запрещённый атрибут ${attr.name} в теге <${tag}>`;
+          if (isForbiddenAttribute(element, attr)) return `опасный атрибут ${attr.name} в теге <${tag}>`;
         }
       }
       return null;
@@ -1695,10 +1695,6 @@ const hvScriptSet = {
 
     /*
      * Безопасная вставка пользовательского html.
-     * Сначала всегда работает встроенная проверка (маска с запрещённым содержимым отклоняется целиком).
-     * Затем, если браузер поддерживает Sanitizer API, html вставляется через Element.setHTML —
-     * это второй, независимый уровень защиты. Иначе вставляются уже проверенные узлы, без повторного разбора.
-     * Возвращает описание нарушения, если html отклонён, иначе null.
      */
     function setSafeHtml(element, html) {
       const fragment = parseInert(html);
