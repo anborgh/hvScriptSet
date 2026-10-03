@@ -289,6 +289,131 @@
     return result;
   }
 
+  const DIALOG_HOST_TAG = 'hvss-settings-dialogs';
+  const DIALOG_STYLES = `
+:host { all: initial; }
+.hvss-settings-dialog {
+  display: none; font: 13px/1.4 Verdana, Arial, Helvetica, sans-serif; color: #333; text-align: left;
+}
+.hvss-settings-dialog * { box-sizing: border-box; font: inherit; color: inherit; }
+.hv-bg {
+  position: fixed; display: flex; justify-content: center; align-items: center;
+  z-index: 10000; width: 100%; height: 100%; left: 0; top: 0; background: rgba(0,0,0,.4); cursor: pointer;
+}
+.inner {
+  cursor: default; margin: 0; width: 760px; max-width: 99%; max-height: 90%; overflow: auto;
+  box-shadow: 0 0 40px #222; padding: 8px 12px 12px; background: #F4F5F6 url("https://i.imgur.com/akmlat3.png");
+}
+b { font-weight: 700; }
+.hv-mask-dialog-title { text-align: center; font-weight: 700; font-size: 18px; line-height: 34px; }
+.hv-control { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.hv-form-block .hv-mask-field { margin-top: 10px; }
+.hv-form-block label { display: block; margin-bottom: 2px; }
+.hv-description { font-size: .9em; font-style: italic; margin-bottom: 4px; }
+input[type="text"], select {
+  display: block; width: 100%; min-width: 0; margin: 0; padding: 4px 6px;
+  border: 1px solid #aaa; border-radius: 2px; background: #fff; color: #222;
+}
+input[type="checkbox"] { margin: 0 4px 0 0; vertical-align: middle; }
+.button {
+  display: inline-block; width: auto; margin: 0; padding: 4px 12px; cursor: pointer;
+  border: 1px solid #999; border-radius: 3px; background: #e9e9e9; color: #222;
+}
+.button:hover { background: #ddd; }
+.button-danger { color: #a33; }
+.af-templates .af-entry { display: grid; grid-template-columns: 1fr 3fr auto; gap: 6px; margin-bottom: 6px; align-items: center; }
+.af-templates .af-single { margin-bottom: 6px; }
+.af-templates input.af-invalid { border: solid 1px #f00; }
+.af-templates .af-violation { color: #a33; font-size: .9em; margin: -2px 0 6px; }
+.af-templates .af-entry .af-violation { grid-column: 1 / -1; margin: 0; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+th { padding: 4px; font-weight: 700; text-align: center; }
+.access-drop-zone { min-width: 140px; min-height: 80px; vertical-align: top; padding: 6px; border: 1px dashed #888; }
+.access-drop-zone.drag-over { outline: 2px solid #555; }
+.access-group-chip {
+  display: inline-block; margin: 2px; padding: 3px 8px; cursor: grab; user-select: none;
+  border: 1px solid #aaa; border-radius: 3px; background: #fff;
+}
+.access-group-chip.dragging { opacity: .5; }
+.access-dialog-archive { margin: 8px 0; text-align: center; }
+`;
+  const DIALOGS_HTML = `
+<div id="accessForumForm" class="hvss-settings-dialog" style="display:none">
+  <div class="hv-bg">
+    <div class="inner container">
+      <div class="hv-mask-dialog-title">Доступы в форуме «<span id="accessForumFormTitle"></span>»</div>
+      <table id="accessLevels">
+        <thead>
+          <tr>
+            <th>Нет маски</th>
+            <th>Только аватар</th>
+            <th>Полный доступ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td id="accessLevelDeny" class="access-drop-zone" data-level="deny"></td>
+            <td id="accessLevelPart" class="access-drop-zone" data-level="part"></td>
+            <td id="accessLevelFull" class="access-drop-zone" data-level="full"></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="access-dialog-archive">
+        <label><input type="checkbox" id="accessForumArchive" /> Архив — маска видна у удалённых пользователей/гостей</label>
+      </div>
+      <div class="hv-control">
+        <input type="button" id="accessForumFormCancel" class="button" value="Отмена" />
+        <input type="button" id="accessForumFormSave" class="button" value="Сохранить" />
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="editAdditionalFieldForm" class="hvss-settings-dialog" style="display:none">
+  <div class="hv-bg">
+    <div class="inner container">
+      <div class="hv-mask-dialog-title" id="af_dialogTitle">Редактировать поле</div>
+      <div class="hv-form-block">
+        <div class="hv-mask-field">
+          <label for="af_name"><b>Название</b></label>
+          <input type="text" id="af_name" placeholder="Личное звание" />
+        </div>
+        <div class="hv-mask-field">
+          <label for="af_class"><b>ID поля</b></label>
+          <select id="af_class"></select>
+        </div>
+        <div class="hv-mask-field">
+          <label for="af_tag"><b>BB-тэг</b></label>
+          <input type="text" id="af_tag" placeholder="info" />
+        </div>
+        <div class="hv-mask-field">
+          <label for="af_type"><b>Тип</b></label>
+          <select id="af_type">
+            <option value="html">html</option>
+            <option value="bbcode">bbcode</option>
+            <option value="text">text</option>
+          </select>
+        </div>
+        <div class="hv-mask-field">
+          <label for="af_description"><b>Пояснение</b></label>
+          <input type="text" id="af_description" placeholder="Пояснение к полю" />
+        </div>
+        <div class="hv-mask-field">
+          <label><b>Шаблоны</b></label>
+          <div class="hv-description">Один или несколько шаблонов для быстрого заполнения.</div>
+          <div id="af_templates" class="af-templates"></div>
+          <input type="button" id="af_addTemplate" class="button" value="+ Добавить шаблон" />
+        </div>
+      </div>
+      <div class="hv-control">
+        <input type="button" id="af_deleteField" class="button button-danger" value="Удалить поле" />
+        <input type="button" id="af_cancelField" class="button" value="Отмена" />
+        <input type="button" id="af_saveField" class="button" value="Сохранить" />
+      </div>
+    </div>
+  </div>
+</div>`;
+
   function injectMaskStyles() {
     if (document.getElementById('hvss-mask-settings-style')) {
       return;
@@ -303,51 +428,11 @@
 .hvwrapper .notes .hv-note-ok { background: #d4edda; border-color: #9dcfb0; color: #1e5a32; }
 .hvwrapper .notes code { background: rgba(0,0,0,.06); padding: 1px 4px; }
 #pun-admain #accessForm .isarchive { color: #888; margin-right: 6px; }
-.hvss-settings-dialog .access-group-chip,
-#pun-admain .access-group-chip { display: inline-block; margin: 2px; padding: 3px 8px; cursor: grab; user-select: none; }
-.hvss-settings-dialog .access-group-chip.dragging { opacity: .5; }
-.hvss-settings-dialog .access-drop-zone { min-width: 140px; min-height: 80px; vertical-align: top; padding: 6px; border: 1px dashed; }
-.hvss-settings-dialog .access-drop-zone.drag-over { outline: 2px solid; }
-#pun-admain .hvss-settings-dialog .hv-form-block .hv-mask-field { margin-top: 10px; }
-.hvss-settings-dialog .hv-form-block label { display: block; margin-bottom: 2px; }
-.hvss-settings-dialog .hv-form-block input,
-.hvss-settings-dialog .hv-form-block select,
-.hvss-settings-dialog .hv-form-block textarea { width: 100%; }
-.hvss-settings-dialog .hv-description { font-size: .9em; font-style: italic; margin-bottom: 4px; }
 #pun-admain .adinput img { max-height: 40px; vertical-align: middle; margin-left: 4px; }
 #pun-admain .adinput img.hv-btn-preview { max-height: 20px; }
 #pun-admain #changelistForm.adcontainer { margin-top: 4px; }
 #pun-admain .hv-dup-tag { color: #a33; font-size: .9em; }
-.hvss-settings-dialog .af-templates input.af-invalid { border: solid 1px #f00; }
-.hvss-settings-dialog .af-templates .af-violation { color: #a33; font-size: .9em; margin: -2px 0 6px; }
-.hvss-settings-dialog .af-templates .af-entry .af-violation { grid-column: 1 / -1; margin: 0; }
 #pun-admain .fielditem .tcl span { color: #777; }
-#pun-admain .button-danger { color: #a33; }
-.hvss-settings-dialog { display: none; }
-.hvss-settings-dialog .hv-bg {
-  position: fixed; display: flex; align-content: center; justify-content: center; align-items: center;
-  z-index: 1000; width: 100%; height: 100%; left: 0; top: 0; background: rgba(0,0,0,.4); cursor: pointer;
-}
-.hvss-settings-dialog .inner {
-  cursor: default; margin: 0; width: 760px; max-width: 99%; max-height: 90%; overflow: auto; z-index: 100;
-  box-shadow: 0 0 40px #222; padding: 8px; background: #F4F5F6 url("https://i.imgur.com/akmlat3.png");
-}
-.hvss-settings-dialog .inner * { box-sizing: border-box; }
-.hvss-settings-dialog .hv-mask-dialog-title {
-  text-align: center; font-weight: 700; font-size: 18px; line-height: 34px; position: relative;
-}
-.hvss-settings-dialog .hv-control {
-  position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 10px;
-}
-.hvss-settings-dialog .af-templates .af-entry {
-  display: grid; grid-template-columns: 1fr 3fr auto; gap: 6px; margin-bottom: 6px; align-items: center;
-}
-.hvss-settings-dialog .af-templates .af-entry input { width: 100%; min-width: 0; }
-.hvss-settings-dialog .af-templates .af-single { width: 100%; }
-.hvss-settings-dialog .af-templates .af-tdel,
-.hvss-settings-dialog .hv-form-block #af_addTemplate { width: auto; }
-.hvss-settings-dialog #accessLevels { width: 100%; table-layout: fixed; }
-.hvss-settings-dialog .access-dialog-archive { margin: 8px 0; text-align: center; }
 `;
     document.head.appendChild(style);
   }
@@ -453,85 +538,25 @@
 
         <p class="submitend">
           <input type="button" id="hv_saveSettings" class="button" value="Сохранить" />
-        </p>
-
-  <div id="accessForumForm" class="hvss-settings-dialog" style="display:none">
-    <div class="hv-bg">
-      <div class="inner container">
-        <div class="hv-mask-dialog-title">Доступы в форуме «<span id="accessForumFormTitle"></span>»</div>
-        <table id="accessLevels">
-          <thead>
-            <tr>
-              <th>Нет маски</th>
-              <th>Только аватар</th>
-              <th>Полный доступ</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td id="accessLevelDeny" class="access-drop-zone" data-level="deny"></td>
-              <td id="accessLevelPart" class="access-drop-zone" data-level="part"></td>
-              <td id="accessLevelFull" class="access-drop-zone" data-level="full"></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="access-dialog-archive">
-          <label><input type="checkbox" id="accessForumArchive" /> Архив — маска видна у удалённых пользователей/гостей</label>
-        </div>
-        <div class="hv-control">
-          <input type="button" id="accessForumFormCancel" class="button" value="Отмена" />
-          <input type="button" id="accessForumFormSave" class="button" value="Сохранить" />
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="editAdditionalFieldForm" class="hvss-settings-dialog" style="display:none">
-    <div class="hv-bg">
-      <div class="inner container">
-        <div class="hv-mask-dialog-title" id="af_dialogTitle">Редактировать поле</div>
-        <div class="hv-form-block">
-          <div class="hv-mask-field">
-            <label for="af_name"><b>Название</b></label>
-            <input type="text" id="af_name" placeholder="Личное звание" />
-          </div>
-          <div class="hv-mask-field">
-            <label for="af_class"><b>ID поля</b></label>
-            <select id="af_class"></select>
-          </div>
-          <div class="hv-mask-field">
-            <label for="af_tag"><b>BB-тэг</b></label>
-            <input type="text" id="af_tag" placeholder="info" />
-          </div>
-          <div class="hv-mask-field">
-            <label for="af_type"><b>Тип</b></label>
-            <select id="af_type">
-              <option value="html">html</option>
-              <option value="bbcode">bbcode</option>
-              <option value="text">text</option>
-            </select>
-          </div>
-          <div class="hv-mask-field">
-            <label for="af_description"><b>Пояснение</b></label>
-            <input type="text" id="af_description" placeholder="Пояснение к полю" />
-          </div>
-          <div class="hv-mask-field">
-            <label><b>Шаблоны</b></label>
-            <div class="hv-description">Один или несколько шаблонов для быстрого заполнения.</div>
-            <div id="af_templates" class="af-templates"></div>
-            <input type="button" id="af_addTemplate" class="button" value="+ Добавить шаблон" />
-          </div>
-        </div>
-        <div class="hv-control">
-          <input type="button" id="af_deleteField" class="button button-danger" value="Удалить поле" />
-          <input type="button" id="af_cancelField" class="button" value="Отмена" />
-          <input type="button" id="af_saveField" class="button" value="Сохранить" />
-        </div>
-      </div>
-    </div>
-  </div>`;
+        </p>`;
         this.panel.innerHTML = '';
         this.panel.appendChild(div);
+        this.renderDialogs();
+      },
+
+      renderDialogs: function () {
+        const old = document.querySelector(DIALOG_HOST_TAG);
+        if (old) {
+          old.remove();
+        }
+        const host = document.createElement(DIALOG_HOST_TAG);
+        this.shadow = host.attachShadow({ mode: 'open' });
+        this.shadow.innerHTML = `<style>${DIALOG_STYLES}</style>${DIALOGS_HTML}`;
+        document.body.appendChild(host);
+      },
+
+      dialog: function (id) {
+        return this.shadow ? this.shadow.getElementById(id) : null;
       },
 
       renderNotes: function () {
@@ -723,10 +748,10 @@
       addListeners: function () {
         document.getElementById('accessForm').addEventListener('click', this.accessFormClick.bind(this));
         document.getElementById('changelistForm').addEventListener('click', this.changelistFormClick.bind(this));
-        document.getElementById('accessForumFormCancel').addEventListener('click', () => {
+        this.dialog('accessForumFormCancel').addEventListener('click', () => {
           this.closeDialog('accessForumForm');
         });
-        document.getElementById('accessForumFormSave').addEventListener('click', () => {
+        this.dialog('accessForumFormSave').addEventListener('click', () => {
           this.saveForumAccess();
         });
         document.getElementById('hv_saveSettings').addEventListener('click', () => {
@@ -751,7 +776,7 @@
       },
 
       bindDialogChrome: function (id) {
-        const root = document.getElementById(id);
+        const root = this.dialog(id);
         if (!root) {
           return;
         }
@@ -768,14 +793,14 @@
       },
 
       openDialog: function (id) {
-        const root = document.getElementById(id);
+        const root = this.dialog(id);
         if (root) {
           root.style.display = 'block';
         }
       },
 
       closeDialog: function (id) {
-        const root = document.getElementById(id);
+        const root = this.dialog(id);
         if (root) {
           root.style.display = 'none';
         }
@@ -793,12 +818,12 @@
       },
 
       accessForumForm: function (forum) {
-        const dialog = document.getElementById('accessForumForm');
+        const dialog = this.dialog('accessForumForm');
         dialog.querySelector('#accessForumFormTitle').textContent = forum.name;
         dialog.dataset.forumName = forum.name;
-        const deny = document.getElementById('accessLevelDeny');
-        const part = document.getElementById('accessLevelPart');
-        const full = document.getElementById('accessLevelFull');
+        const deny = this.dialog('accessLevelDeny');
+        const part = this.dialog('accessLevelPart');
+        const full = this.dialog('accessLevelFull');
         deny.innerHTML = '';
         part.innerHTML = '';
         full.innerHTML = '';
@@ -832,7 +857,7 @@
           };
         });
         const guestAccess = Array.isArray(this.settings.guestAccess) ? this.settings.guestAccess : [];
-        document.getElementById('accessForumArchive').checked = guestAccess.indexOf(forum.name) !== -1;
+        this.dialog('accessForumArchive').checked = guestAccess.indexOf(forum.name) !== -1;
         this.openDialog('accessForumForm');
       },
 
@@ -854,16 +879,16 @@
       },
 
       saveForumAccess: function () {
-        const dialog = document.getElementById('accessForumForm');
+        const dialog = this.dialog('accessForumForm');
         const forumName = dialog.dataset.forumName;
         if (!forumName) {
           return;
         }
         const partChips = Array.prototype.slice.call(
-          document.getElementById('accessLevelPart').querySelectorAll('.access-group-chip')
+          this.dialog('accessLevelPart').querySelectorAll('.access-group-chip')
         );
         const fullChips = Array.prototype.slice.call(
-          document.getElementById('accessLevelFull').querySelectorAll('.access-group-chip')
+          this.dialog('accessLevelFull').querySelectorAll('.access-group-chip')
         );
         if (!this.settings.forumAccess) {
           this.settings.forumAccess = {};
@@ -883,7 +908,7 @@
         } else {
           delete this.settings.forumAccessExtended[forumName];
         }
-        const isArchive = document.getElementById('accessForumArchive').checked;
+        const isArchive = this.dialog('accessForumArchive').checked;
         const guestAccess = Array.isArray(this.settings.guestAccess) ? this.settings.guestAccess.slice() : [];
         const idx = guestAccess.indexOf(forumName);
         if (isArchive && idx === -1) {
@@ -905,13 +930,13 @@
       },
 
       editAdditionalFieldForm: function (key) {
-        const dialog = document.getElementById('editAdditionalFieldForm');
+        const dialog = this.dialog('editAdditionalFieldForm');
         const isNew = !key;
         const item = (!isNew && this.settings.changeList[key]) || {};
         dialog.dataset.fieldKey = key || '';
-        document.getElementById('af_dialogTitle').textContent = isNew ? 'Новое поле' : 'Редактировать поле';
-        document.getElementById('af_name').value = item.title || '';
-        const classSelect = document.getElementById('af_class');
+        this.dialog('af_dialogTitle').textContent = isNew ? 'Новое поле' : 'Редактировать поле';
+        this.dialog('af_name').value = item.title || '';
+        const classSelect = this.dialog('af_class');
         const usedClasses = {};
         Object.keys(this.settings.changeList || {}).forEach(k => {
           if (k === key) {
@@ -936,17 +961,17 @@
           const disabled = usedClasses[f] ? ' disabled' : '';
           return '<option value="' + f + '"' + selected + disabled + '>' + f + '</option>';
         }).join('');
-        document.getElementById('af_tag').value = item.tag || '';
-        const typeSelect = document.getElementById('af_type');
+        this.dialog('af_tag').value = item.tag || '';
+        const typeSelect = this.dialog('af_type');
         const type = item.type === 'bbtag' ? 'bbcode' : (item.type || 'html');
         typeSelect.value = ['html', 'bbcode', 'text'].indexOf(type) !== -1 ? type : 'html';
-        document.getElementById('af_description').value = item.description || '';
+        this.dialog('af_description').value = item.description || '';
         this._afRenderTemplates(this._afGetTemplates(item.defaultCode));
-        document.getElementById('af_templates').oninput = () => this._afValidateTemplates();
+        this.dialog('af_templates').oninput = () => this._afValidateTemplates();
         typeSelect.onchange = () => this._afValidateTemplates();
 
-        document.getElementById('af_addTemplate').onclick = () => {
-          const container = document.getElementById('af_templates');
+        this.dialog('af_addTemplate').onclick = () => {
+          const container = this.dialog('af_templates');
           if (!container.querySelector('.af-entry')) {
             const singleInput = container.querySelector('.af-single');
             const currentCode = singleInput ? singleInput.value : '';
@@ -959,9 +984,9 @@
           }
           this._afValidateTemplates();
         };
-        document.getElementById('af_cancelField').onclick = () => this.closeDialog('editAdditionalFieldForm');
-        document.getElementById('af_deleteField').style.display = isNew ? 'none' : '';
-        document.getElementById('af_deleteField').onclick = () => {
+        this.dialog('af_cancelField').onclick = () => this.closeDialog('editAdditionalFieldForm');
+        this.dialog('af_deleteField').style.display = isNew ? 'none' : '';
+        this.dialog('af_deleteField').onclick = () => {
           if (!key) {
             return;
           }
@@ -971,11 +996,11 @@
             this.renderChangelist();
           }
         };
-        document.getElementById('af_saveField').onclick = () => {
-          const title = document.getElementById('af_name').value.trim();
-          const fieldClass = document.getElementById('af_class').value;
-          const tag = sanitizeBbTag(document.getElementById('af_tag').value);
-          const typeValue = document.getElementById('af_type').value;
+        this.dialog('af_saveField').onclick = () => {
+          const title = this.dialog('af_name').value.trim();
+          const fieldClass = this.dialog('af_class').value;
+          const tag = sanitizeBbTag(this.dialog('af_tag').value);
+          const typeValue = this.dialog('af_type').value;
           if (!title || !fieldClass || !tag) {
             $.jGrowl('Заполните название, ID поля и BB-тэг');
             return;
@@ -992,7 +1017,7 @@
             $.jGrowl('BB-тэг должен быть уникальным');
             return;
           }
-          const container = document.getElementById('af_templates');
+          const container = this.dialog('af_templates');
           let defaultCode;
           if (container.querySelector('.af-entry')) {
             const list = Array.prototype.slice.call(container.querySelectorAll('.af-entry')).map(e => ({
@@ -1026,7 +1051,7 @@
             class: fieldClass,
             tag,
             type: typeValue,
-            description: document.getElementById('af_description').value.trim(),
+            description: this.dialog('af_description').value.trim(),
           };
           if (defaultCode) {
             this.settings.changeList[fieldKey].defaultCode = defaultCode;
@@ -1056,7 +1081,7 @@
       },
 
       _afRenderTemplates: function (templates) {
-        const container = document.getElementById('af_templates');
+        const container = this.dialog('af_templates');
         container.innerHTML = '';
         if (templates.length <= 1) {
           const input = document.createElement('input');
@@ -1072,8 +1097,8 @@
       },
 
       _afValidateTemplates: function () {
-        const container = document.getElementById('af_templates');
-        const isHtml = document.getElementById('af_type').value === 'html';
+        const container = this.dialog('af_templates');
+        const isHtml = this.dialog('af_type').value === 'html';
         const bad = [];
         container.querySelectorAll('.af-violation').forEach(el => el.remove());
         container.querySelectorAll('.af-single, .af-tcode').forEach((input, index) => {
@@ -1112,7 +1137,7 @@
         delBtn.value = '✕';
         delBtn.addEventListener('click', () => {
           div.remove();
-          const container = document.getElementById('af_templates');
+          const container = this.dialog('af_templates');
           const entries = container.querySelectorAll('.af-entry');
           if (entries.length === 1) {
             const lastCode = entries[0].querySelector('.af-tcode').value;
