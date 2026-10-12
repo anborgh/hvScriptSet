@@ -130,6 +130,18 @@ const hvScriptSet = {
 
     let posts = [];
 
+    // Вставляет поле профиля перед ближайшим следующим по userFields, иначе в конец.
+    function insertProfileField(profile, fieldClass, node) {
+      const position = userFields.indexOf(fieldClass);
+      const next = position === -1 ? null : userFields.slice(position + 1)
+        .map(name => profile.querySelector('.' + name)).find(Boolean);
+      if (next) {
+        next.parentNode.insertBefore(node, next);
+      } else {
+        profile.appendChild(node);
+      }
+    }
+
     function getForumPosts() {
       return Array.from(document.querySelectorAll('.post'))
         .filter(post => !post.closest('#mask_dialog') && post.querySelector('.post-content'));
@@ -181,21 +193,10 @@ const hvScriptSet = {
 
           if (changedPosts[_i].changeList.avatar && changedPosts[_i].access.common) {
             if (!changedPosts[_i].profile.querySelector('.pa-avatar img')) {
-              let fieldIndex = userFields.indexOf('pa-avatar');
-              let block = document.createElement('li');
-              block.className = 'pa-avatar';
-              block.innerHTML = `<img src="" title="${changedPosts[_i].username}">`;
-              for (let index = ++fieldIndex; index <= userFields.length; index++) {
-                let nextSibling = changedPosts[_i].profile.querySelector('.' + userFields[index]);
-                if (nextSibling) {
-                  let parent = nextSibling.parentNode;
-                  parent.insertBefore(block, nextSibling);
-                  break;
-                }
-                if (index === userFields.length) {
-                  changedPosts[_i].profile.appendChild(block);
-                }
-              }
+              const block = el('li', { className: 'pa-avatar' }, [
+                el('img', { src: '', title: changedPosts[_i].username })
+              ]);
+              insertProfileField(changedPosts[_i].profile, 'pa-avatar', block);
             }
             let avatar = changedPosts[_i].profile.querySelector(`.pa-avatar img[title]`)
               || changedPosts[_i].profile.querySelector(`.pa-avatar img[alt]`)
@@ -214,20 +215,8 @@ const hvScriptSet = {
               }
               if (change !== 'signature' && !changedPosts[_i].profile.getElementsByClassName(changedPosts[_i]
                 .changeList[change].field)[0]) {
-                let _fieldIndex = userFields.indexOf(changedPosts[_i].changeList[change].field);
-                let _block = document.createElement('li');
-                _block.className = thisChanges[change].field;
-                for (let _index = ++_fieldIndex; _index <= userFields.length; _index++) {
-                  let _nextSibling = changedPosts[_i].profile.querySelector('.' + userFields[_index]);
-                  if (_nextSibling) {
-                    let parent = _nextSibling.parentNode;
-                    parent.insertBefore(_block, _nextSibling);
-                    break;
-                  }
-                  if (_index === userFields.length) {
-                    changedPosts[_i].profile.appendChild(_block);
-                  }
-                }
+                insertProfileField(changedPosts[_i].profile, thisChanges[change].field,
+                  el('li', { className: thisChanges[change].field }));
               }
               let fieldEl = changedPosts[_i].profile.getElementsByClassName(changedPosts[_i]
                 .changeList[change].field)[0];
@@ -329,11 +318,12 @@ const hvScriptSet = {
         const hiddenBlock = post.querySelector('.hvmask');
         if (hiddenBlock) return;
         const text = post.querySelector('.post-content');
+        let html = text.innerHTML;
         allTagsList.forEach(tag => {
-          let pattern =
-            new RegExp('\\[' + tag + '\\](.*?)\\[\/' + tag + '\\]', 'gi');
-          text.innerHTML = text.innerHTML.replace(pattern, '');
-        })
+          const escaped = escapeRegExp(tag);
+          html = html.replace(new RegExp('\\[' + escaped + '\\]([\\s\\S]*?)\\[\\/' + escaped + '\\]', 'gi'), '');
+        });
+        if (html !== text.innerHTML) text.innerHTML = html;
       })
     }
 
@@ -351,40 +341,31 @@ const hvScriptSet = {
     function getTags(text) {
       let postChangeList = {};
       let clearedText = text.replace(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi, '');
-      for (let field in changeList) {
-        if (changeList.hasOwnProperty(field)) {
-          let tags = changeList[field].tag.split(',');
-          for (let i = tags.length; i >= 0; i--) {
-            if (tags.hasOwnProperty(i)) {
-              let pattern = new RegExp('\\[' + tags[i] + '\\]([\\s\\S]*?)\\[\\/' + tags[i] + '\\]', 'gmi');
-              let clearPattern = new RegExp('\\[(\\/?)' + tags[i] + '\\]', 'gmi');
-              if (clearedText.match(pattern)) {
-                postChangeList[field] = {
-                  'tag': tags[i],
-                  'field': changeList[field].class,
-                  'content': clearedText.match(pattern)[0].replace(clearPattern, ''),
-                  'type': changeList[field].type
-                };
-              }
-            }
+      Object.keys(changeList).forEach(field => {
+        const tags = changeList[field].tag.split(',');
+        for (let i = tags.length - 1; i >= 0; i--) {
+          const tag = escapeRegExp(tags[i]);
+          const matches = clearedText.match(new RegExp('\\[' + tag + '\\]([\\s\\S]*?)\\[\\/' + tag + '\\]', 'gmi'));
+          if (matches) {
+            postChangeList[field] = {
+              'tag': tags[i],
+              'field': changeList[field].class,
+              'content': matches[0].replace(new RegExp('\\[(\\/?)' + tag + '\\]', 'gmi'), ''),
+              'type': changeList[field].type
+            };
           }
         }
-      }
+      });
       return postChangeList;
     }
 
     function getTagList() {
-      let tagList = [];
-      for (let field in changeList) {
-        if (changeList.hasOwnProperty(field)) {
-          let tags = changeList[field].tag.split(',');
-          for (let i in tags) {
-            if (tags.hasOwnProperty(i) && !tagList.indexOf(tags[i]) + 1) {
-              tagList.push(tags[i]);
-            }
-          }
-        }
-      }
+      const tagList = [];
+      Object.values(changeList).forEach(item => {
+        item.tag.split(',').forEach(tag => {
+          if (!tagList.includes(tag)) tagList.push(tag);
+        });
+      });
       return tagList;
     }
 
@@ -461,19 +442,6 @@ const hvScriptSet = {
       }
 
       return usersInfo;
-    }
-
-    function setSelectionRange(input, selectionStart, selectionEnd) {
-      if (input.setSelectionRange) {
-        input.focus();
-        input.setSelectionRange(selectionStart, selectionEnd);
-      } else if (input.createTextRange) {
-        let range = input.createTextRange();
-        range.collapse(true);
-        range.moveEnd('character', selectionEnd);
-        range.moveStart('character', selectionStart);
-        range.select();
-      }
     }
 
     function getAvatar() {
@@ -677,32 +645,19 @@ const hvScriptSet = {
 
       prevMasks = nextMasks;
       if (options.updateUi) {
-        getMaskStorage(prevMasks);
+        refreshUi();
       }
       return true;
     }
 
     function hasMaskInStorage(storage, item) {
-      let res = -1;
-      for (let i = 0; i < storage.length; i++) {
-        let obj = JSON.parse(storage[i]);
-        if (Object.keys(obj).length === Object.keys(item).length) {
-          let counter = 0;
-          for (let k in obj) {
-            if (obj.hasOwnProperty(k)) {
-              if (JSON.stringify(obj[k]) !== JSON.stringify(item[k])) {
-                break;
-              } else {
-                counter++;
-              }
-            }
-            if (counter === Object.keys(obj).length) {
-              res = i;
-            }
-          }
-        }
-      }
-      return res;
+      const itemKeys = Object.keys(item);
+      return storage.findIndex(str => {
+        const obj = JSON.parse(str);
+        const keys = Object.keys(obj);
+        return keys.length === itemKeys.length
+          && keys.every(key => JSON.stringify(obj[key]) === JSON.stringify(item[key]));
+      });
     }
 
     // ---- hvScriptSet.data: отладка из консоли ----
@@ -923,7 +878,7 @@ const hvScriptSet = {
       }
 
       prevMasks = next;
-      getMaskStorage(prevMasks);
+      refreshUi();
       console.log('hvScriptSet import:', summary);
       return Object.assign({ ok: true, applied: true, backup }, summary);
     }
@@ -1106,21 +1061,21 @@ const hvScriptSet = {
 
     function removeMaskCodeFromMessage(options = {}) {
       if (!responseMessageField) {
-        updateInsertCodeButtonState();
+        refreshUi();
         return;
       }
       if (!options.skipAdopt) {
         adoptMaskFromMessageIfPresent();
       }
       responseMessageField.value = extractMaskFromMessage(responseMessageField.value).cleanMessage;
-      updateInsertCodeButtonState();
+      refreshUi();
     }
 
     function insertMaskCodeToMessage() {
       if (!responseMessageField || !hasActiveMask()) return;
       const baseMessage = extractMaskFromMessage(responseMessageField.value).cleanMessage;
       responseMessageField.value = `${baseMessage}\n${getStrMask()}`.trim();
-      updateInsertCodeButtonState();
+      refreshUi();
     }
 
     function toggleMaskCodeInMessage() {
@@ -1449,14 +1404,6 @@ const hvScriptSet = {
       if (ui.open) {
         renderPopover();
       }
-    }
-
-    function updateInsertCodeButtonState() {
-      refreshUi();
-    }
-
-    function getMaskStorage() {
-      refreshUi();
     }
 
     function renderIndicator() {
@@ -2374,14 +2321,7 @@ const hvScriptSet = {
           let item = list.querySelector('.' + cls);
           if (!item) {
             item = el('li', { className: cls });
-            const position = userFields.indexOf(cls);
-            const next = position === -1 ? null : userFields.slice(position + 1)
-              .map(name => list.querySelector('.' + name)).find(Boolean);
-            if (next) {
-              next.parentNode.insertBefore(item, next);
-            } else {
-              list.appendChild(item);
-            }
+            insertProfileField(list, cls, item);
             if (key === 'author') {
               item.innerHTML = '<span class="acchide">Автор:&nbsp;</span><a href="#" rel="nofollow"></a>';
               item.querySelector('a').textContent = window.UserLogin;
@@ -2785,6 +2725,10 @@ const hvScriptSet = {
       return str.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
     }
 
+    function escapeRegExp(str) {
+      return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     function escapeHtml(str) {
       return String(str)
         .replace(/&/g, '&amp;')
@@ -2880,7 +2824,7 @@ const hvScriptSet = {
         return;
       }
       prevMasks = remote.masks;
-      getMaskStorage(prevMasks);
+      refreshUi();
     }
 
     function saveMaskSettings(localSettings) {
@@ -2936,12 +2880,10 @@ const hvScriptSet = {
       let codeBoxes = post.innerHTML.match(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi) || [];
       let text = post.innerHTML.replace(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi, '|code-box-replacer|')
         .replace(/<dl class="post-sig">([\s\S]*?)?<\/dl>/g, '');
-      for (let ch in chList) {
-        if (chList.hasOwnProperty(ch)) {
-          let pattern = new RegExp('\\[' + chList[ch].tag + '\\]([\\s\\S]*?)\\[\/' + chList[ch].tag + '\\]', 'gi');
-          text = text.replace(pattern, '');
-        }
-      }
+      Object.values(chList).forEach(item => {
+        const tag = escapeRegExp(item.tag);
+        text = text.replace(new RegExp('\\[' + tag + '\\]([\\s\\S]*?)\\[\\/' + tag + '\\]', 'gi'), '');
+      });
       codeBoxes.forEach(box => {
         text = text.replace(/\|code-box-replacer\|/i, () => box);
       });
