@@ -9,9 +9,12 @@
  * Что нового:
  * 1. Фикс маски с эмоджи
  * 2. Защита хранилища масок.
+ * 3. Консольный дебаггер.
  */
 
 const hvScriptSet = {
+
+  version: '1.1.4',
 
   data: {},
 
@@ -90,10 +93,13 @@ const hvScriptSet = {
     const lockedTopicMaskIcon = '<svg class="hv-topic-mask-icon hv-topic-mask-icon-locked" viewBox="0 0 94.666 94.666" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M76.923,35.406h-3.128v-8.945C73.795,11.871,61.924,0,47.333,0S20.871,11.871,20.871,26.461v8.945h-3.128c-1.104,0-2,0.896-2,2v55.26c0,1.104,0.896,2,2,2h59.18c1.104,0,2-0.896,2-2v-55.26C78.923,36.302,78.028,35.406,76.923,35.406zM47.333,11.181c8.426,0,15.281,6.854,15.281,15.28v8.945H32.052v-8.945C32.052,18.036,38.907,11.181,47.333,11.181z"/></svg>';
 
     const MASK_SPLIT_KEY = '|splitKey|';
+    const STORAGE_LIMIT = 65500;
+    const storageState = { lastRead: null, lastWrite: null, errors: [] };
 
     let prevMasks = [];
 
     getStorageMask();
+    setupDebugData();
 
     let posts = [];
 
@@ -951,27 +957,68 @@ const hvScriptSet = {
       }
     }
 
+    function recordStorageOp(kind, info) {
+      const entry = Object.assign({ time: new Date().toISOString() }, info);
+      if (kind) storageState[kind] = entry;
+      if (!entry.ok) {
+        storageState.errors.push(entry);
+        if (storageState.errors.length > 20) storageState.errors.shift();
+      }
+      return entry;
+    }
+
     function fetchRemoteMasks() {
       let result = { ok: false, masks: [] };
+      const info = { op: 'read', ok: false, reason: 'request', status: null, code: null };
+      const started = performance.now();
       $.ajax({
         async: false,
         url: '/api.php',
         data: { method: 'storage.get', key: 'maskListUser' },
-        success: function (res) {
-          if (!res) return;
+        success: function (res, textStatus, xhr) {
+          info.status = xhr.status;
+          if (!res) {
+            info.reason = 'empty-response';
+            return;
+          }
           if (res.error) {
-            if (String(res.error.code) === '404') result = { ok: true, masks: [] };
+            info.code = res.error.code != null ? String(res.error.code) : null;
+            // 404 = ключа ещё нет, масок просто нет
+            if (info.code === '404') {
+              result = { ok: true, masks: [] };
+              info.ok = true;
+              info.reason = '';
+              info.rawLength = 0;
+              info.dropped = 0;
+            } else {
+              info.reason = 'api-error';
+            }
             return;
           }
           const data = res.response && res.response.storage && res.response.storage.data;
-          if (!data) return;
-          result = { ok: true, masks: parseMaskStorage(data.maskListUser) };
+          if (!data) {
+            info.reason = 'no-data';
+            return;
+          }
+          const raw = data.maskListUser;
+          const masks = parseMaskStorage(raw);
+          result = { ok: true, masks };
+          info.ok = true;
+          info.reason = '';
+          info.rawLength = typeof raw === 'string' ? raw.length : 0;
+          info.dropped = splitMaskStorage(raw).length - masks.length;
+        },
+        error: function (xhr, textStatus) {
+          info.status = xhr.status;
+          info.reason = textStatus === 'timeout' ? 'timeout' : 'request';
         }
       });
+      info.ms = Math.round(performance.now() - started);
+      recordStorageOp('lastRead', info);
       return result;
     }
 
-    function parseMaskStorage(raw) {
+    function splitMaskStorage(raw) {
       if (typeof raw !== 'string' || !raw) return [];
       let data;
       try {
@@ -979,15 +1026,23 @@ const hvScriptSet = {
       } catch (e) {
         data = raw.split(MASK_SPLIT_KEY);
       }
-      return clearResponse(data.filter(Boolean));
+      return data.filter(Boolean);
+    }
+
+    function parseMaskStorage(raw) {
+      return clearResponse(splitMaskStorage(raw));
     }
 
     function writeRemoteMasks(masks) {
       const value = encodeMaskStorage(masks);
-      if (value.length >= 65500) {
+      const info = { op: 'write', ok: false, reason: 'request', status: null, code: null, count: masks.length, bytes: value.length };
+      if (value.length >= STORAGE_LIMIT) {
+        info.reason = 'overflow';
+        recordStorageOp('lastWrite', info);
         return { ok: false, reason: 'overflow' };
       }
 
+      const started = performance.now();
       let ok = false;
       $.ajax({
         async: false,
@@ -999,11 +1054,25 @@ const hvScriptSet = {
           key: 'maskListUser',
           value,
         },
-        success: function (res) {
-          ok = !!res && !res.error && String(res.response) === '1';
+        success: function (res, textStatus, xhr) {
+          info.status = xhr.status;
+          if (res && res.error) {
+            info.code = res.error.code != null ? String(res.error.code) : null;
+            info.reason = 'api-error';
+            return;
+          }
+          ok = !!res && String(res.response) === '1';
+          info.reason = ok ? '' : 'bad-response';
+        },
+        error: function (xhr, textStatus) {
+          info.status = xhr.status;
+          info.reason = textStatus === 'timeout' ? 'timeout' : 'request';
         }
       });
-      return { ok, reason: ok ? '' : 'request' };
+      info.ok = ok;
+      info.ms = Math.round(performance.now() - started);
+      recordStorageOp('lastWrite', info);
+      return { ok, reason: info.reason };
     }
 
     function persistMaskToUserStorage(mask, options = {}) {
@@ -1014,6 +1083,7 @@ const hvScriptSet = {
 
       const maskString = JSON.stringify(maskToSave);
       if (maskString.includes(MASK_SPLIT_KEY)) {
+        recordStorageOp(null, { op: 'save', ok: false, reason: 'splitKey' });
         notifyMaskError('В маске есть служебная последовательность ' + MASK_SPLIT_KEY + ', её нельзя сохранить в список.', options);
         return false;
       }
@@ -1102,6 +1172,273 @@ const hvScriptSet = {
 
       prevMasks = nextMasks;
       getMaskStorage(prevMasks);
+    }
+
+    // ---- hvScriptSet.data: отладка из консоли ----
+    function safeCall(fn) {
+      try {
+        return fn();
+      } catch (e) {
+        return 'error: ' + e.message;
+      }
+    }
+
+    function getStorageStats() {
+      const encodedLength = encodeMaskStorage(prevMasks).length;
+      return {
+        count: prevMasks.length,
+        limit: maskLimit,
+        encodedLength,
+        byteLimit: STORAGE_LIMIT,
+        free: STORAGE_LIMIT - 1 - encodedLength,
+        usedPercent: Math.round(encodedLength / STORAGE_LIMIT * 1000) / 10,
+        lastRead: storageState.lastRead,
+        lastWrite: storageState.lastWrite,
+        errors: storageState.errors.slice(),
+      };
+    }
+
+    // Проверка целостности.
+    function checkMaskIntegrity(options = {}) {
+      const issues = [];
+      const add = (level, code, message, extra) => issues.push(Object.assign({ level, code, message }, extra));
+      const valid = [];
+
+      prevMasks.forEach((str, index) => {
+        let obj;
+        try {
+          obj = JSON.parse(str);
+        } catch (e) {
+          add('error', 'invalid-json', 'Маска не разбирается как JSON', { index });
+          return;
+        }
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+          add('error', 'bad-shape', 'Маска должна быть объектом', { index });
+          return;
+        }
+        valid.push({ index, obj });
+
+        if (str.includes(MASK_SPLIT_KEY)) {
+          add('error', 'split-key', 'В маске есть разделитель списка ' + MASK_SPLIT_KEY, { index });
+        }
+        const keys = Object.keys(obj);
+        if (!keys.length) {
+          add('warn', 'empty-mask', 'Пустая маска', { index });
+        }
+        keys.forEach(key => {
+          const field = obj[key];
+          const type = field && typeof field === 'object' ? typeof field.value : null;
+          if (type !== 'string' && type !== 'number') {
+            add('error', 'bad-field', 'У поля нет корректного value', { index, key });
+            return;
+          }
+          if (!changeList[key]) {
+            add('warn', 'unknown-field', 'Поля нет в настройках скрипта', { index, key });
+          }
+          if (typeof field.value === 'string' && findHtmlViolation(parseInert(field.value))) {
+            add('warn', 'unsafe-html', 'Значение содержит запрещённый html', { index, key });
+          }
+        });
+      });
+
+      valid.forEach(({ index, obj }, i) => {
+        const dupIndex = hasMaskInStorage(valid.slice(0, i).map(m => JSON.stringify(m.obj)), obj);
+        if (dupIndex !== -1) {
+          add('warn', 'duplicate', 'Дубль маски', { index, duplicateOf: valid[dupIndex].index });
+        }
+      });
+
+      if (prevMasks.length > maskLimit) {
+        add('warn', 'over-limit', 'Масок больше лимита: ' + prevMasks.length + '/' + maskLimit);
+      }
+      const encodedLength = encodeMaskStorage(prevMasks).length;
+      if (encodedLength >= STORAGE_LIMIT) {
+        add('error', 'size-overflow', 'Размер списка превышает лимит хранилища');
+      } else if (encodedLength >= STORAGE_LIMIT * 0.9) {
+        add('warn', 'size-near-limit', 'Хранилище заполнено более чем на 90%');
+      }
+
+      if (options.remote) {
+        const remote = fetchRemoteMasks();
+        if (!remote.ok) {
+          add('error', 'remote-unavailable', 'Не удалось прочитать список с сервера', {
+            reason: storageState.lastRead && storageState.lastRead.reason,
+          });
+        } else {
+          if (JSON.stringify(remote.masks) !== JSON.stringify(prevMasks)) {
+            add('warn', 'out-of-sync', 'Список в странице не совпадает с сервером', {
+              local: prevMasks.length,
+              remote: remote.masks.length,
+            });
+          }
+          if (storageState.lastRead && storageState.lastRead.dropped > 0) {
+            add('warn', 'remote-invalid-entries', 'На сервере есть повреждённые записи, они пропадут при следующем сохранении', {
+              count: storageState.lastRead.dropped,
+            });
+          }
+        }
+      }
+
+      return { ok: !issues.some(item => item.level === 'error'), issues };
+    }
+
+    function buildMaskExport(list, source) {
+      return JSON.stringify({
+        format: 'hvss-masks',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        userId: window.UserID || null,
+        source,
+        masks: list.map(str => JSON.parse(str)),
+      });
+    }
+
+    function exportMasks() {
+      const remote = fetchRemoteMasks();
+      if (!remote.ok) {
+        console.warn('hvScriptSet: сервер недоступен, выгружен список из страницы (может быть неактуален).');
+      }
+      const text = buildMaskExport(remote.ok ? remote.masks : prevMasks, remote.ok ? 'server' : 'cache');
+      console.log(text);
+      return text;
+    }
+
+    // options: { mode: 'merge' (по умолчанию) | 'replace', confirm: true (обязательно для replace), dryRun: true }
+    function importMasks(input, options = {}) {
+      const fail = (reason, message, extra) => {
+        console.warn('hvScriptSet import: ' + message);
+        return Object.assign({ ok: false, applied: false, reason, message }, extra);
+      };
+      const mode = options.mode === 'replace' ? 'replace' : 'merge';
+
+      let payload = input;
+      if (typeof input === 'string') {
+        try {
+          payload = JSON.parse(input);
+        } catch (e) {
+          return fail('invalid-json', 'Не удалось разобрать JSON.');
+        }
+      }
+      const list = Array.isArray(payload) ? payload
+        : (payload && payload.format === 'hvss-masks' && Array.isArray(payload.masks) ? payload.masks : null);
+      if (!list) {
+        return fail('bad-format', 'Ожидается результат export() или массив масок.');
+      }
+      if (payload.version > 1) {
+        return fail('unsupported-version', 'Версия формата ' + payload.version + ' не поддерживается.');
+      }
+
+      const accepted = [];
+      const rejected = [];
+      const warnings = [];
+      list.forEach((item, index) => {
+        const reject = reason => rejected.push({ index, reason });
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return reject('bad-shape');
+        const keys = Object.keys(item);
+        if (!keys.length) return reject('empty-mask');
+        for (const key of keys) {
+          const field = item[key];
+          const type = field && typeof field === 'object' ? typeof field.value : null;
+          if (key === '__proto__' || (type !== 'string' && type !== 'number')) return reject('bad-field:' + key);
+          if (typeof field.value === 'string' && findHtmlViolation(parseInert(field.value))) return reject('unsafe-html:' + key);
+          if (!changeList[key]) warnings.push({ index, key, reason: 'unknown-field' });
+        }
+        const str = JSON.stringify(cloneMask(item));
+        if (str.includes(MASK_SPLIT_KEY)) return reject('split-key');
+        accepted.push(str);
+      });
+
+      if (!accepted.length) {
+        return fail('nothing-to-import', 'Нет подходящих масок.', { rejected });
+      }
+      if (mode === 'replace' && options.confirm !== true && !options.dryRun) {
+        return fail('confirm-required', 'Для режима replace нужно передать { confirm: true }.');
+      }
+
+      const remote = fetchRemoteMasks();
+      if (!remote.ok) {
+        return fail('remote-unavailable', 'Не удалось прочитать текущий список с сервера.');
+      }
+
+      const next = mode === 'replace' ? [] : remote.masks.slice();
+      accepted.forEach(str => {
+        const existing = hasMaskInStorage(next, JSON.parse(str));
+        if (existing !== -1) next.splice(existing, 1);
+        next.push(str);
+      });
+      const trimmed = Math.max(0, next.length - maskLimit);
+      next.splice(0, trimmed);
+
+      const summary = {
+        mode,
+        received: list.length,
+        accepted: accepted.length,
+        rejected,
+        warnings,
+        before: remote.masks.length,
+        after: next.length,
+        trimmedByLimit: trimmed,
+        encodedLength: encodeMaskStorage(next).length,
+      };
+
+      if (options.dryRun) {
+        console.log('hvScriptSet import (dryRun):', summary);
+        return Object.assign({ ok: true, applied: false }, summary);
+      }
+
+      const backup = buildMaskExport(remote.masks, 'server');
+      const result = writeRemoteMasks(next);
+      if (!result.ok) {
+        return fail(result.reason, 'Запись не удалась (' + result.reason + '), список на сервере не изменён.', summary);
+      }
+
+      prevMasks = next;
+      getMaskStorage(prevMasks);
+      console.log('hvScriptSet import:', summary);
+      return Object.assign({ ok: true, applied: true, backup }, summary);
+    }
+
+    function setupDebugData() {
+      const define = (name, getter) => Object.defineProperty(that.data, name, {
+        enumerable: true,
+        configurable: true,
+        get: getter,
+      });
+
+      define('env', () => ({
+        version: that.version,
+        userId: window.UserID || null,
+        hasApiTicket: !!window.ForumAPITicket,
+        path: location.pathname + location.search,
+        userAgent: navigator.userAgent,
+      }));
+      define('access', () => ({
+        checkAccess: safeCall(checkAccess),
+        checkAccessExtended: safeCall(checkAccessExtended),
+        isAvatarOnlyMode: safeCall(isAvatarOnlyMode),
+        forumAccessLevel: safeCall(getAccessByForumName),
+        groupId: window.GroupID,
+        groupTitle: window.GroupTitle,
+        forumName: safeCall(() => window.FORUM && window.FORUM.topic
+          ? getClearedForumName(window.FORUM.topic.forum_name) : null),
+      }));
+      define('storage', getStorageStats);
+
+      // options: { remote: false } — без проверки сервера
+      that.data.report = function (options = {}) {
+        const integrity = checkMaskIntegrity({ remote: options.remote !== false });
+        const report = {
+          createdAt: new Date().toISOString(),
+          env: that.data.env,
+          access: that.data.access,
+          storage: getStorageStats(),
+          integrity,
+        };
+        console.log(JSON.stringify(report, null, 2));
+        return report;
+      };
+      that.data.export = exportMasks;
+      that.data.import = importMasks;
     }
 
     function clearMask() {
@@ -1667,9 +2004,13 @@ const hvScriptSet = {
           prepareMaskForPost();
         }, true);
 
-        document.querySelector('.ajax-post').addEventListener('click', () => {
-          prepareMaskForPost();
-        }, true);
+        const ajaxPost = document.querySelector('.ajax-post');
+
+        if (!!ajaxPost) {
+          ajaxPost.addEventListener('click', () => {
+            prepareMaskForPost();
+          }, true);
+        }
       }
     }
 
