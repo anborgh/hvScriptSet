@@ -2,19 +2,20 @@
 
 /**
  * hvScriptSet
- * Version: 1.1.4
+ * Version: 1.2.0
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. Фикс маски с эмоджи
- * 2. Защита хранилища масок.
- * 3. Консольный дебаггер.
+ * 1. Новый интерфейс: предпросмотр у кнопки отправки и меню масок вместо мини-аватара.
+ * 2. Редактор маски с превью в стилях форума и загрузкой аватара в «Мои загрузки».
+ * 3. Можно скрыть подпись в посте.
+ * 4. Интерфейс берёт кнопки, поля и цвета у форума.
  */
 
 const hvScriptSet = {
 
-  version: '1.1.4',
+  version: '1.2.0',
 
   data: {},
 
@@ -25,6 +26,15 @@ const hvScriptSet = {
       console.error('Настройки скрипта маски не определены');
       return;
     }
+
+    const HVSS_URLS = {
+      style: 'https://forumstatic.ru/files/0017/95/29/92410.css',
+      defaultAvatar: 'https://i.imgur.com/bQuC3S1.png',
+      buttonImage: 'https://i.imgur.com/ONu0llO.png',
+      blankImage: '/i/blank.gif',
+      api: '/api.php',
+      upload: '/upload',
+    };
 
     const that = this;
 
@@ -45,7 +55,7 @@ const hvScriptSet = {
       },
       'avatar': {
         title: 'Аватар',
-        description: 'Прямая ссылка на картинку формата jpg, gif или png',
+        description: 'Прямая ссылка на картинку jpg, gif, png или webp',
         tag: 'icon,ava',
         class: 'pa-avatar',
         type: 'avatar'
@@ -65,32 +75,49 @@ const hvScriptSet = {
       saveMaskSettings(opt);
     }
 
+    const NO_SIGNATURE = '[hidesig]';
+    const MOBILE_QUERY = '(max-width: 640px)';
+    const ICONS = {
+      pin: '<svg class="hv-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 14v7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      code: '<svg class="hv-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      caretUp: '<svg class="hv-icon" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      caretDown: '<svg class="hv-icon" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    };
+
     let tmpMask = {};
-    let previewForm = {};
-    let responsePreviewForm = null;
-    let responsePreviewWrapper = null;
-    let responsePreviewClearButton = null;
-    let responsePreviewInsertCodeButton = null;
+    let previewForm = null;
     let responseMessageField = null;
-    let responsePreviewTrigger = null;
-    let responsePreviewPinned = false;
     let dialogMaskSnapshot = {};
     let maskButton = null;
-    let rememberTopicMaskCheckbox = null;
+    let topicPinned = false;
     let errorList = {};
+    let persistOnSubmit = true;
+    let editorOriginalMask = null;
+    const ui = {
+      layer: null,
+      shade: null,
+      popover: null,
+      menu: null,
+      chip: null,
+      anchor: null,
+      open: false,
+      dialogInner: null,
+      dialogTitle: null,
+      saveCheckbox: null,
+      avatarStatus: null,
+      globalBind: false
+    };
 
     const userFields = opt.userFields || ['pa-author', 'pa-title', 'pa-avatar', 'pa-fld1', 'pa-reg',
       'pa-posts', 'pa-respect', 'pa-positive', 'pa-awards', 'pa-gifts'];
     const allTagsList = getTagList();
 
-    const defaultAvatar = opt.defaultAvatar || 'https://i.imgur.com/bQuC3S1.png';
+    const defaultAvatar = opt.defaultAvatar || HVSS_URLS.defaultAvatar;
 
     const maskLimit = opt.maskLimit || 20;
 
     const canQuoteMask = !opt.disableQuote;
     const topicMaskStorageKey = `hvssTopicMasksByTopicId:${window.UserID || 'guest'}`;
-    const unlockedTopicMaskIcon = '<svg class="hv-topic-mask-icon hv-topic-mask-icon-unlocked" viewBox="0 0 97.891 97.89" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M71.957,2.539c-14.299,0-25.934,11.635-25.934,25.934v8.764H2c-0.529,0-1.039,0.211-1.414,0.586C0.211,38.2,0,38.708,0,39.239l0.041,54.115c0,1.104,0.896,1.998,2,1.998l0,0l57.916-0.041c1.104,0,1.998-0.896,1.998-2V39.197c0-0.533-0.213-1.045-0.592-1.42c-0.373-0.373-0.881-0.58-1.408-0.58c-0.004,0-0.01,0-0.016,0L56.98,37.22v-8.748c0-8.258,6.719-14.977,14.977-14.977s14.975,6.719,14.975,14.977v6.764c0,1.105,0.896,2,2,2h6.959c1.104,0,2-0.895,2-2v-6.764C97.89,14.174,86.256,2.539,71.957,2.539z"/></svg>';
-    const lockedTopicMaskIcon = '<svg class="hv-topic-mask-icon hv-topic-mask-icon-locked" viewBox="0 0 94.666 94.666" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M76.923,35.406h-3.128v-8.945C73.795,11.871,61.924,0,47.333,0S20.871,11.871,20.871,26.461v8.945h-3.128c-1.104,0-2,0.896-2,2v55.26c0,1.104,0.896,2,2,2h59.18c1.104,0,2-0.896,2-2v-55.26C78.923,36.302,78.028,35.406,76.923,35.406zM47.333,11.181c8.426,0,15.281,6.854,15.281,15.28v8.945H32.052v-8.945C32.052,18.036,38.907,11.181,47.333,11.181z"/></svg>';
 
     const MASK_SPLIT_KEY = '|splitKey|';
     const STORAGE_LIMIT = 65500;
@@ -103,8 +130,13 @@ const hvScriptSet = {
 
     let posts = [];
 
+    function getForumPosts() {
+      return Array.from(document.querySelectorAll('.post'))
+        .filter(post => !post.closest('#mask_dialog') && post.querySelector('.post-content'));
+    }
+
     function getPosts() {
-      posts = document.querySelectorAll('.post');
+      posts = getForumPosts();
       let changedPosts = {};
       let changedUsersId = [];
       for (let i = 0; i < posts.length; i++) {
@@ -243,6 +275,14 @@ const hvScriptSet = {
                   }
                   break;
                 case 'signature':
+                  if (htmlToText(changedPosts[_i].changeList[change].content).trim() === NO_SIGNATURE) {
+                    const sigBlock = changedPosts[_i].signature && changedPosts[_i].signature.closest('.post-sig');
+                    if (sigBlock) {
+                      sigBlock.remove();
+                    }
+                    changedPosts[_i].signature = null;
+                    break;
+                  }
                   if (window.GroupID !== '3') {
                     if (!changedPosts[_i].signature) {
                       let signEl = document.createElement('dl');
@@ -275,7 +315,7 @@ const hvScriptSet = {
     }
 
     function hideTags() {
-      posts = document.querySelectorAll('.post');
+      posts = getForumPosts();
       posts.forEach(post => {
         const hiddenBlock = post.querySelector('.hvmask');
         if (hiddenBlock) return;
@@ -391,7 +431,7 @@ const hvScriptSet = {
       if (usersIdStr) {
         $.ajax({
           async: false,
-          url: '/api.php',
+          url: HVSS_URLS.api,
           data: {
             method: 'users.get',
             user_id: usersIdStr
@@ -414,30 +454,6 @@ const hvScriptSet = {
       return usersInfo;
     }
 
-    function getDialog() {
-      let maskButton = addButton();
-      if (maskButton) {
-        maskButton.addEventListener('click', () => {
-          const hasAnyAccess = checkAccess() || checkAccessExtended() || Boolean(getAccessByForumName());
-          if (!hasAnyAccess) return;
-          callMaskDialog();
-        });
-      }
-      let maskDialog = buildMaskDialog();
-      let main = document.querySelector('#pun-main');
-      main.appendChild(maskDialog);
-    }
-
-    function getStyle() {
-      let style = document.createElement('link');
-      style.rel = 'stylesheet';
-      const styleUrl = new URL('https://forumstatic.ru/files/0017/95/29/92410.css', window.location.href);
-      style.href = styleUrl.toString();
-
-      let docstyle = document.head.querySelector('link[href*="style"]');
-      document.head.insertBefore(style, docstyle);
-    }
-
     function setSelectionRange(input, selectionStart, selectionEnd) {
       if (input.setSelectionRange) {
         input.focus();
@@ -451,161 +467,6 @@ const hvScriptSet = {
       }
     }
 
-    function getPreviewTargets() {
-      const targets = [];
-      if (previewForm && previewForm.querySelector) {
-        targets.push(previewForm);
-      }
-      if (responsePreviewForm && responsePreviewForm.querySelector) {
-        targets.push(responsePreviewForm);
-      }
-      return targets;
-    }
-
-    function updatePreviewField(field, callback) {
-      getPreviewTargets().forEach(preview => {
-        const node = preview.querySelector(`.hv-preview-${field}`);
-        if (node) {
-          callback(node);
-        }
-      });
-    }
-
-    function changeMaskForm(field, value) {
-      let str = '';
-      switch (field) {
-        case 'signature':
-          break;
-        case 'avatar':
-          str = value !== '' ? value : getAvatar();
-          if (!checkImage(str)) {
-            errorList[field] = 'В поле [Аватар] должна быть ссылка на картинку формата jpg, gif или png';
-          } else {
-            delete errorList[field];
-            updatePreviewField(field, node => {
-              const image = node.querySelector('img');
-              if (image) {
-                image.src = str;
-              }
-            });
-          }
-          break;
-        case 'author':
-          if (textLength(value) > 25) {
-            errorList[field] = 'Поле [Ник] не должно содержать больше 25 символов';
-          } else {
-            str = value !== '' ? value : window.UserLogin;
-            delete errorList[field];
-            updatePreviewField(field, node => {
-              const link = node.querySelector('a');
-              if (link) {
-                link.innerText = str;
-              } else {
-                node.innerText = str;
-              }
-              const avatar = node.closest('.hv-preview-block')?.querySelector('.hv-preview-avatar img');
-              if (avatar) {
-                avatar.alt = str;
-                avatar.title = str;
-              }
-            });
-          }
-          break;
-        case 'title':
-          if (textLength(value) > 50) {
-            errorList[field] = 'Поле [Статус] не должно содержать больше 50 символов';
-          } else {
-            delete errorList[field];
-            str = value !== '' ? value : getUserTitle();
-            updatePreviewField(field, node => {
-              node.innerText = str;
-            });
-          }
-          break;
-        default:
-          if (textLength(value) > 999) {
-            errorList[field] = `Поле [${changeList[field].title}] не должно содержать больше 999 символов`;
-          } else {
-            delete errorList[field];
-            str = value || '';
-            switch (changeList[field].type) {
-              case 'text':
-                delete errorList[field];
-                updatePreviewField(field, node => {
-                  node.innerHTML = str.replace(/</gi, '&lt;');
-                });
-                break;
-              case 'bbcode':
-                delete errorList[field];
-                updatePreviewField(field, node => {
-                  const violation = setSafeHtml(node, bbcodeToHtml(str));
-                  if (violation) {
-                    errorList[field] = `В поле [${changeList[field].title}] ${violation}`;
-                  }
-                });
-                break;
-              default:
-                const violation = checkHtml(str);
-                if (violation) {
-                  errorList[field] = `В поле [${changeList[field].title}] ${violation}`;
-                } else {
-                  delete errorList[field];
-                  updatePreviewField(field, node => {
-                    setSafeHtml(node, str);
-                  });
-                }
-            }
-          }
-          break;
-      }
-      showErrors();
-    }
-
-    function showErrors() {
-      let errorListBlock = document.querySelector('#mask_dialog .hv-error-list');
-      errorListBlock.innerHTML = '';
-      if (Object.keys(errorList).length) {
-        errorListBlock.style.display = 'block';
-        for (let error in errorList) {
-          if (errorList.hasOwnProperty(error)) {
-            let li = document.createElement('li');
-            li.textContent = ` ! ${errorList[error]}`;
-            errorListBlock.appendChild(li);
-          }
-        }
-      } else {
-        errorListBlock.style.display = 'none';
-      }
-    }
-
-    function fillForm(obj) {
-      let form = document.querySelector('#mask_form');
-      const normalizedMask = normalizeMaskByAccess(obj || {});
-      for (let change in changeList) {
-        if (changeList.hasOwnProperty(change)) {
-          let field = form.querySelector('#mask_' + change);
-          if (!field) {
-            delete tmpMask[change];
-            changeMaskForm(change, '');
-            continue;
-          }
-          if (normalizedMask[change]) {
-            field.value = normalizedMask[change].value;
-            tmpMask[change] = {
-              'tag': normalizedMask[change].tag,
-              'value': normalizedMask[change].value
-            };
-            changeMaskForm(change, normalizedMask[change].value);
-          } else {
-            field.value = '';
-            delete tmpMask[change];
-            changeMaskForm(change, '');
-          }
-        }
-      }
-      updateMaskButtonIndicator();
-    }
-
     function getAvatar() {
       return window.UserAvatar ? window.UserAvatar : defaultAvatar;
     }
@@ -614,338 +475,24 @@ const hvScriptSet = {
       return window.UserTitle ? window.UserTitle : 'Статус';
     }
 
-    function addButton() {
-      let form = document.getElementById("form-buttons");
-      if (form && (checkAccess() || checkAccessExtended() || getAccessByForumName())) {
-        let button = document.createElement('td');
-        button.id = 'button-mask';
-        button.title = 'Маска профиля';
-        button.innerHTML = '<img src="/i/blank.gif">';
-        let bgImage = opt.buttonImage ? opt.buttonImage : 'https://i.imgur.com/ONu0llO.png';
-        button.style.backgroundImage = 'url("' + bgImage + '")';
-        form.getElementsByTagName('tr')[0].appendChild(button);
-        maskButton = button;
-        return button;
-      } else {
+    // Хранилище форума работает в windows-1251: символы вне этой кодировки (эмодзи, ∅, ✦…)
+    // кодируются, иначе они пропадают при сохранении.
+    const CP1251_CHARS = (function () {
+      try {
+        const bytes = new Uint8Array(128).map((_, index) => index + 128);
+        return new Set(Array.from(new TextDecoder('windows-1251').decode(bytes)));
+      } catch (e) {
         return null;
       }
-    }
-
-    function callMaskDialog() {
-      let maskDialog = document.getElementById('mask_dialog');
-      dialogMaskSnapshot = JSON.parse(JSON.stringify(tmpMask || {}));
-      updateRememberTopicMaskState();
-      maskDialog.style.display = 'block';
-      getMaskStorage(prevMasks);
-      document.addEventListener('keyup', hideMaskByEsc);
-    }
-
-    function hideMaskDialog() {
-      let maskDialog = document.getElementById('mask_dialog');
-      maskDialog.style.display = 'none';
-      document.removeEventListener('keyup', hideMaskByEsc);
-    }
-
-    function hideMaskByEsc(e) {
-      if (e.keyCode === 27) hideMaskDialog();
-    }
-
-    function buildMaskDialog() {
-      let code = document.createElement('div');
-      code.id = 'mask_dialog';
-      code.style.display = 'none';
-
-      let bg = document.createElement('div');
-      bg.className = 'hv-bg';
-
-      bg.addEventListener('click', event => {
-        if (event.target === bg) {
-          hideMaskDialog();
-        }
-      });
-
-      let inner = document.createElement('div');
-      inner.className = 'inner container';
-
-      let title = document.createElement('div');
-      title.className = 'hv-mask-dialog-title';
-      title.innerHTML = 'Маска профиля';
-
-      let errorListBlock = document.createElement('ul');
-      errorListBlock.className = 'hv-error-list';
-      errorListBlock.style.display = 'none';
-
-      let showPreviewFlag = opt.showPreview || true;
-
-      let preview = document.createElement('div');
-      previewForm = preview;
-      preview.className = 'hv-preview-block';
-      clearPreview();
-
-      let form = document.createElement('form');
-      form.id = 'mask_form';
-
-      let previewMaskForm = document.createElement('form');
-      previewMaskForm.id = 'hv_preview_form';
-      previewMaskForm.style.display = 'none';
-
-      let previewFormSent = document.createElement('input');
-      previewFormSent.type = 'hidden';
-      previewFormSent.name = 'form_sent';
-      previewFormSent.value = 1;
-      let previewFormUser = document.createElement('input');
-      previewFormUser.type = 'hidden';
-      previewFormUser.name = 'form_user';
-      previewFormUser.value = window.UserLogin;
-      let previewReqMessage = document.createElement('textarea');
-      previewReqMessage.name = 'req_message';
-      previewMaskForm.appendChild(previewFormSent);
-      previewMaskForm.appendChild(previewFormUser);
-      previewMaskForm.appendChild(previewReqMessage);
-
-      let _loop = function _loop(mask) {
-        if (changeList.hasOwnProperty(mask)) {
-          (function () {
-            let li = document.createElement('div');
-            li.className = 'hv-mask-field ' + mask;
-            let input = void 0;
-            switch (changeList[mask].type) {
-              case 'html':
-              case 'signature':
-              case 'bbcode':
-                input = document.createElement('textarea');
-                input.id = 'mask_' + mask;
-                break;
-              default:
-                input = document.createElement('input');
-                input.type = 'text';
-                input.id = 'mask_' + mask;
-            }
-            const applyFieldValue = () => {
-              let idField = input.id.split('mask_')[1];
-              if (input.value !== '' && !checkHtml(input.value)) {
-                tmpMask[idField] = {
-                  'tag': changeList[idField].tag.split(',')[0],
-                  'value': input.value
-                };
-              } else {
-                delete tmpMask[idField];
-              }
-              changeMaskForm(idField, input.value);
-              updateMaskButtonIndicator();
-            };
-            input.addEventListener('blur', applyFieldValue);
-            let label = document.createElement('label');
-            label.for = 'mask_' + mask;
-
-            label.innerHTML += '<b>' + changeList[mask].title + '</b>';
-            if (changeList[mask].description) {
-              label.innerHTML += '<div class="description">' + changeList[mask].description + '</div>';
-            }
-            li.appendChild(label);
-            if (changeList[mask].defaultCode) {
-              const code = changeList[mask].defaultCode;
-
-              if (typeof code === 'string') {
-                let templateButton = document.createElement('div');
-                templateButton.className = 'button hv-add-template';
-                templateButton.innerText = '« вставить шаблон';
-                templateButton.title = 'Вставить шаблон';
-                templateButton.addEventListener('click', function () {
-                  fillInput(input, changeList[mask].defaultCode);
-                  applyFieldValue();
-                });
-                label.insertBefore(templateButton, label.querySelector('b'));
-              }
-
-              if (Array.isArray(code)) {
-                const templateSelect = document.createElement('select');
-                templateSelect.className = 'button hv-add-template';
-                const defaultOption = document.createElement('option');
-                defaultOption.value = '';
-                defaultOption.selected = true;
-                defaultOption.text = 'Вставить шаблон';
-                templateSelect.appendChild(defaultOption);
-                code.forEach(item => {
-                  const option = document.createElement('option');
-                  option.value = item.template;
-                  option.text = item.name;
-                  templateSelect.appendChild(option);
-                });
-                templateSelect.addEventListener('change', event => {
-                  const value = event.target.value;
-                  fillInput(input, value);
-                  applyFieldValue();
-                })
-                label.insertBefore(templateSelect, label.querySelector('b'));
-              }
-            }
-            li.appendChild(input);
-            form.appendChild(li);
-          })();
-        }
-      };
-
-      const allowedDialogFields = getAllowedDialogMaskFields();
-      for (let mask in changeList) {
-        if (allowedDialogFields.includes(mask)) {
-          _loop(mask);
-        }
-      }
-
-      let formBlock = document.createElement('div');
-      formBlock.className = 'hv-form-block';
-      formBlock.appendChild(form);
-      formBlock.appendChild(previewMaskForm);
-
-      let userMasks = document.createElement('ul');
-      userMasks.className = 'hv-masks-storage';
-      userMasks.classList.toggle('hidden', prevMasks.length === 0);
-
-      let block = document.createElement('div');
-      block.className = 'hv-mask-block';
-      if (showPreviewFlag) {
-        block.appendChild(preview);
-      }
-      block.appendChild(formBlock);
-      block.appendChild(userMasks);
-
-      let okButton = document.createElement('input');
-      okButton.type = 'button';
-      okButton.className = 'button';
-      okButton.name = 'insertMask';
-      okButton.value = 'Вставить маску';
-      okButton.addEventListener('click', insertMask);
-
-      rememberTopicMaskCheckbox = document.createElement('button');
-      rememberTopicMaskCheckbox.type = 'button';
-      rememberTopicMaskCheckbox.name = 'rememberTopicMask';
-      rememberTopicMaskCheckbox.className = 'button hv-topic-mask-toggle is-inactive';
-      rememberTopicMaskCheckbox.innerHTML = unlockedTopicMaskIcon + lockedTopicMaskIcon;
-      setRememberTopicMaskEnabled(false);
-      if ($.fn && typeof $.fn.tipsy === 'function') {
-        $(rememberTopicMaskCheckbox).tipsy();
-      }
-      rememberTopicMaskCheckbox.addEventListener('click', () => {
-        if (rememberTopicMaskCheckbox.disabled) return;
-        const topicId = getCurrentTopicId();
-        if (!topicId) return;
-        if (isRememberTopicMaskEnabled()) {
-          setRememberTopicMaskEnabled(false);
-          removeTopicMaskState(topicId);
-          return;
-        }
-        adoptMaskFromMessageIfPresent();
-        const maskToSave = getEffectiveMask();
-        if (!Object.keys(maskToSave).length) {
-          return;
-        }
-        setRememberTopicMaskEnabled(true);
-        setTopicMaskState(topicId, {
-          remember: true,
-          mask: cloneMask(maskToSave)
-        });
-      });
-
-      let clearButton = document.createElement('input');
-      clearButton.type = 'button';
-      clearButton.className = 'button';
-      clearButton.name = 'clearMask';
-      clearButton.value = 'Очистить';
-      clearButton.addEventListener('click', clearMask);
-
-      let cancelButton = document.createElement('input');
-      cancelButton.type = 'button';
-      cancelButton.className = 'button';
-      cancelButton.name = 'cancelMask';
-      cancelButton.value = 'Отмена';
-      cancelButton.addEventListener('click', cancelMask);
-
-      let control = document.createElement('div');
-      control.className = 'hv-control';
-      control.appendChild(okButton);
-      control.appendChild(rememberTopicMaskCheckbox);
-      control.appendChild(clearButton);
-      control.appendChild(cancelButton);
-
-      inner.appendChild(title);
-      inner.appendChild(errorListBlock);
-      inner.appendChild(block);
-      inner.appendChild(control);
-
-      code.appendChild(bg);
-      bg.appendChild(inner);
-
-      return code;
-    }
-
-    function getMaskStorage(prevMasks) {
-      const maskDialog = document.getElementById('mask_dialog');
-      if (!maskDialog) return;
-      let maskStore = maskDialog.querySelector('.hv-masks-storage');
-      maskStore.classList.toggle('hidden', prevMasks.length === 0);
-      maskStore.innerHTML = `<div class="hv-storage-count">масок: ${prevMasks.length}/${maskLimit}</div>`;
-
-      let _loop2 = function _loop2(mask) {
-        let mymask = JSON.parse(prevMasks[mask]);
-        let li = document.createElement('li');
-        li.className = 'hv-mask-element';
-        let tempavatar = mymask['avatar'] ? mymask['avatar'].value : defaultAvatar;
-        let avatar = document.createElement('img');
-        avatar.src = tempavatar;
-        let infoBlock = '';
-
-        for (let item in changeList) {
-          if (changeList.hasOwnProperty(item) && item !== 'avatar' && mymask[item]) {
-            const value = mymask[item].value.toString();
-            if (!checkHtml(value)) {
-              infoBlock += '<div class="' + item + '"><b>' + changeList[item].title + ':</b> ' +
-                (changeList[item].type === 'html' ? value : escapeHtml(value)) + '</div>';
-            }
-          }
-        }
-
-        let deleteMask = document.createElement('a');
-        deleteMask.className = 'hv-delete-mask';
-        deleteMask.innerText = 'Удалить';
-        deleteMask.title = 'Удалить маску из списка';
-        deleteMask.addEventListener('click', () => deleteMaskFromStorage(mask, li));
-        li.appendChild(avatar);
-        if ((mymask['avatar'] && Object.keys(mymask).length > 1) ||
-          (!mymask['avatar'] && Object.keys(mymask).length > 0)) {
-          li.dataset.content = infoBlock;
-          $(li).tipsy({
-            title: function() { return `<div class="hv-mask-tipsy">${this.getAttribute('data-content')}</div>`; },
-            fade: true,
-            html: true,
-            gravity: 'e',
-            className: 'hv-mask-tooltipsy'
-          });
-        } else {
-          $(li).tipsy();
-        }
-        li.appendChild(deleteMask);
-        avatar.addEventListener('click', () => fillForm(mymask));
-        maskStore.appendChild(li);
-      };
-
-      for (let mask = prevMasks.length - 1; mask >= 0; mask--) {
-        _loop2(mask);
-      }
-    }
-
-    function fillInput(input, value) {
-      input.value = value;
-    }
-
-    function insertMask () {
-      hideMaskDialog();
-    }
+    })();
 
     function encodeMaskStorage(masks) {
       return masks.join(MASK_SPLIT_KEY)
         .replace(/%/g, '%25')
-        .replace(/[\u{10000}-\u{10FFFF}]/gu, ch => encodeURIComponent(ch));
+        .replace(/[^\u0000-\u007F]/gu, ch => {
+          if (ch.length > 1) return encodeURIComponent(ch);
+          return !CP1251_CHARS || CP1251_CHARS.has(ch) ? ch : encodeURIComponent(ch);
+        });
     }
 
     function notifyMaskError(text, options = {}) {
@@ -973,7 +520,7 @@ const hvScriptSet = {
       const started = performance.now();
       $.ajax({
         async: false,
-        url: '/api.php',
+        url: HVSS_URLS.api,
         data: { method: 'storage.get', key: 'maskListUser' },
         success: function (res, textStatus, xhr) {
           info.status = xhr.status;
@@ -1047,7 +594,7 @@ const hvScriptSet = {
       $.ajax({
         async: false,
         type: 'POST',
-        url: '/api.php',
+        url: HVSS_URLS.api,
         data: {
           method: 'storage.set',
           token: window.ForumAPITicket,
@@ -1095,6 +642,12 @@ const hvScriptSet = {
       }
 
       const nextMasks = remote.masks.slice();
+      if (options.replace && Object.keys(options.replace).length) {
+        const replaceIndex = hasMaskInStorage(nextMasks, options.replace);
+        if (replaceIndex !== -1) {
+          nextMasks.splice(replaceIndex, 1);
+        }
+      }
       const existingIndex = hasMaskInStorage(nextMasks, maskToSave);
       if (existingIndex !== -1) {
         nextMasks.splice(existingIndex, 1);
@@ -1143,37 +696,6 @@ const hvScriptSet = {
       return res;
     }
 
-    function deleteMaskFromStorage(mask, li) {
-      const isConfirmed = confirm('Точно удалить маску?');
-
-      if (!isConfirmed) return;
-
-      const target = prevMasks[mask];
-
-      if ($(li).tipsy('getTitle')) {
-        $(li).tipsy('hide');
-      }
-
-      const remote = fetchRemoteMasks();
-      if (!remote.ok) {
-        $.jGrowl('Не удалось загрузить список масок, маска не удалена. Попробуй ещё раз.');
-        return;
-      }
-
-      const nextMasks = remote.masks.slice();
-      const index = nextMasks.indexOf(target);
-      if (index !== -1) {
-        nextMasks.splice(index, 1);
-        if (!writeRemoteMasks(nextMasks).ok) {
-          $.jGrowl('Ошибка удаления, попробуй ещё раз.');
-          return;
-        }
-      }
-
-      prevMasks = nextMasks;
-      getMaskStorage(prevMasks);
-    }
-
     // ---- hvScriptSet.data: отладка из консоли ----
     function safeCall(fn) {
       try {
@@ -1191,7 +713,6 @@ const hvScriptSet = {
         encodedLength,
         byteLimit: STORAGE_LIMIT,
         free: STORAGE_LIMIT - 1 - encodedLength,
-        usedPercent: Math.round(encodedLength / STORAGE_LIMIT * 1000) / 10,
         lastRead: storageState.lastRead,
         lastWrite: storageState.lastWrite,
         errors: storageState.errors.slice(),
@@ -1441,100 +962,6 @@ const hvScriptSet = {
       that.data.import = importMasks;
     }
 
-    function clearMask() {
-      const rememberTopicMaskChecked = isRememberTopicMaskEnabled();
-      removeMaskCodeFromMessage({ skipAdopt: true });
-      tmpMask = {};
-      clearPreview(previewForm);
-      clearPreview(responsePreviewForm, true);
-      errorList = {};
-      showErrors();
-      updateMaskButtonIndicator();
-      let maskForm = document.getElementById('mask_form');
-      maskForm.reset();
-      if (rememberTopicMaskCheckbox) {
-        setRememberTopicMaskEnabled(rememberTopicMaskChecked);
-      }
-    }
-
-    function cancelMask() {
-      errorList = {};
-      showErrors();
-      fillForm(dialogMaskSnapshot || {});
-      hideMaskDialog();
-    }
-
-    function clearPreview(target = previewForm, isForumPreview = false) {
-      if (!target) return;
-      target.innerHTML = '';
-      if (!isForumPreview) {
-        for (let mask in changeList) {
-          if (changeList.hasOwnProperty(mask)) {
-            const div = document.createElement('div');
-            div.className = `hv-preview-${mask}`;
-            switch (mask) {
-              case 'author':
-                div.innerHTML = window.UserLogin;
-                target.appendChild(div);
-                break;
-              case 'title':
-                div.innerHTML = getUserTitle();
-                target.appendChild(div);
-                break;
-              case 'avatar':
-                {
-                  const src = getAvatar();
-                  div.innerHTML = `<img src="${src}" alt="${window.UserLogin}" title="${window.UserLogin}">`;
-                  target.appendChild(div);
-                }
-                break;
-              case 'signature':
-                break;
-              default:
-                div.innerHTML = '';
-                target.appendChild(div);
-                break;
-            }
-          }
-        }
-        return;
-      }
-
-      const profile = document.createElement('div');
-      profile.className = 'post-author';
-      const profileList = document.createElement('ul');
-      profile.appendChild(profileList);
-      for (let mask in changeList) {
-        if (changeList.hasOwnProperty(mask)) {
-          const div = document.createElement('li');
-          div.className = `${changeList[mask].class} hv-preview-${mask}`;
-          switch (mask) {
-            case 'author':
-              div.innerHTML = `<span class="acchide">Автор:&nbsp;</span><a href="#" rel="nofollow">${window.UserLogin}</a>`;
-              profileList.appendChild(div);
-              break;
-            case 'title':
-              div.innerHTML = getUserTitle();
-              profileList.appendChild(div);
-              break;
-            case 'avatar':
-              let src = getAvatar();
-              div.classList.add('item2');
-              div.innerHTML = `<img src="${src}" alt="${window.UserLogin}" title="${window.UserLogin}">`;
-              profileList.appendChild(div);
-              break;
-            case 'signature':
-              break;
-            default:
-              div.innerHTML = '';
-              profileList.appendChild(div);
-              break;
-          }
-        }
-      }
-      target.appendChild(profile);
-    }
-
     function convertTagsToFormMask(tags) {
       const formMask = {};
       for (let field in tags) {
@@ -1646,56 +1073,6 @@ const hvScriptSet = {
       setTopicMaskStorage(storage);
     }
 
-    function updateRememberTopicMaskState() {
-      const topicId = getCurrentTopicId();
-      if (!rememberTopicMaskCheckbox) return;
-      setRememberTopicMaskEnabled(false);
-      if (!topicId) {
-        rememberTopicMaskCheckbox.disabled = true;
-        return;
-      }
-
-      rememberTopicMaskCheckbox.disabled = false;
-      const state = getTopicMaskState(topicId);
-      const hasSavedMask = Boolean(state && state.mask && Object.keys(state.mask).length);
-      setRememberTopicMaskEnabled(Boolean(state && state.remember === true && hasSavedMask));
-      if (state && state.remember === true && !hasSavedMask) {
-        removeTopicMaskState(topicId);
-      }
-    }
-
-    function syncTopicMaskOnSubmit(fromEdit) {
-      const topicId = getCurrentTopicId();
-      adoptMaskFromMessageIfPresent();
-      const maskToSave = getEffectiveMask();
-      if (!topicId || !rememberTopicMaskCheckbox || !isRememberTopicMaskEnabled() || !Object.keys(maskToSave).length) {
-        if (rememberTopicMaskCheckbox && !Object.keys(maskToSave).length) {
-          setRememberTopicMaskEnabled(false);
-        }
-        if (topicId && (!isRememberTopicMaskEnabled() || !Object.keys(maskToSave).length)) {
-          removeTopicMaskState(topicId);
-        }
-        return;
-      }
-      setTopicMaskState(topicId, {
-        remember: true,
-        mask: cloneMask(maskToSave)
-      });
-    }
-
-    function restoreMaskAfterPost() {
-      if (!responseMessageField) return;
-      const topicMaskState = getTopicMaskState(getCurrentTopicId());
-      if (topicMaskState && topicMaskState.remember && topicMaskState.mask
-        && Object.keys(topicMaskState.mask).length) {
-        fillForm(normalizeMaskByAccess(topicMaskState.mask));
-      } else {
-        clearMask();
-      }
-      updateRememberTopicMaskState();
-      updateInsertCodeButtonState();
-    }
-
     function isMaskCodeInMessage() {
       return Boolean(responseMessageField && /\[block=hvmask\]/i.test(responseMessageField.value));
     }
@@ -1745,18 +1122,6 @@ const hvScriptSet = {
       insertMaskCodeToMessage();
     }
 
-    function updateInsertCodeButtonState() {
-      if (!responsePreviewInsertCodeButton) return;
-      const hasMask = hasActiveMask();
-      const isShown = isMaskCodeInMessage();
-      responsePreviewInsertCodeButton.classList.toggle('is-visible', hasMask);
-      responsePreviewInsertCodeButton.classList.toggle('is-active', isShown);
-      responsePreviewInsertCodeButton.textContent = isShown ? 'Скрыть код' : 'Показать код';
-      responsePreviewInsertCodeButton.title = isShown
-        ? 'Убрать код маски из поля ответа'
-        : 'Вставить код маски в поле ответа';
-    }
-
     function injectMaskToMessage() {
       if (!responseMessageField) return;
       if (isMaskCodeInMessage()) {
@@ -1772,141 +1137,1422 @@ const hvScriptSet = {
       return Object.keys(tmpMask).length > 0;
     }
 
-    function isRememberTopicMaskEnabled() {
-      return Boolean(rememberTopicMaskCheckbox && rememberTopicMaskCheckbox.classList.contains('is-active'));
+    function el(tag, attrs, children) {
+      const node = document.createElement(tag);
+      if (attrs) {
+        Object.keys(attrs).forEach(key => {
+          const value = attrs[key];
+          if (value === undefined || value === null || value === false) return;
+          if (key === 'className') node.className = value;
+          else if (key === 'text') node.textContent = value;
+          else if (key === 'html') node.innerHTML = value;
+          else if (key === 'dataset') Object.assign(node.dataset, value);
+          else if (key.indexOf('on') === 0 && typeof value === 'function') node.addEventListener(key.slice(2), value);
+          else if (value === true) node.setAttribute(key, '');
+          else node.setAttribute(key, value);
+        });
+      }
+      (children || []).forEach(child => {
+        if (child === null || child === undefined || child === false) return;
+        node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+      });
+      return node;
     }
 
-    function setRememberTopicMaskEnabled(isEnabled) {
-      if (!rememberTopicMaskCheckbox) return;
-      const enabled = Boolean(isEnabled);
-      rememberTopicMaskCheckbox.classList.toggle('is-active', enabled);
-      rememberTopicMaskCheckbox.classList.toggle('is-inactive', !enabled);
-      rememberTopicMaskCheckbox.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-      rememberTopicMaskCheckbox.setAttribute('aria-label',
-        enabled ? 'Сложить надетую маску' : 'Всегда надевать маску в этой теме');
-      rememberTopicMaskCheckbox.setAttribute('title',
-        enabled ? 'Сложить надетую маску' : 'Всегда надевать маску в этой теме');
+    function byId(id) {
+      return document.getElementById(id);
     }
 
-    function updateMaskButtonIndicator() {
-      if (!responsePreviewTrigger) {
-        updateInsertCodeButtonState();
+    function forumButton(value, onClick, className) {
+      return el('input', {
+        type: 'button',
+        className: 'button' + (className ? ' ' + className : ''),
+        value,
+        onclick: event => {
+          event.preventDefault();
+          onClick(event);
+        }
+      });
+    }
+
+    function buildPanel(children) {
+      const panel = el('form', { className: 'hv-panel', novalidate: true }, children);
+      panel.addEventListener('submit', event => event.preventDefault());
+      return panel;
+    }
+
+    function forumActions(buttons, className) {
+      return el('div', { className: 'formsubmit hv-actions' + (className ? ' ' + className : '') }, buttons);
+    }
+
+    function makeImg(src, className) {
+      const image = el('img', { className, src, alt: '' });
+      image.addEventListener('error', () => {
+        if (image.dataset.hvFallback) return;
+        image.dataset.hvFallback = '1';
+        image.src = defaultAvatar;
+      });
+      return image;
+    }
+
+    function checkRow(title, hint, checked, onChange) {
+      const input = el('input', { type: 'checkbox' });
+      input.checked = Boolean(checked);
+      input.addEventListener('change', () => onChange(input.checked));
+      return el('label', { className: 'hv-check' }, [
+        input,
+        el('span', null, [title, hint ? el('small', { className: 'hv-muted', text: hint }) : null])
+      ]);
+    }
+
+    function isTouchUi() {
+      return Boolean(window.matchMedia && window.matchMedia('(hover: none)').matches);
+    }
+
+    function isSheetMode() {
+      return Boolean(window.matchMedia && window.matchMedia(MOBILE_QUERY).matches);
+    }
+
+    function checkImage(src) {
+      return /\.(jpe?g|png|gif|webp)/i.test(String(src || ''));
+    }
+
+    function safeImageSrc(src, fallback) {
+      const value = typeof src === 'string' ? src.trim() : '';
+      return /^https?:\/\//i.test(value) ? value : fallback;
+    }
+
+    function maskAvatar(mask) {
+      return mask && mask.avatar && mask.avatar.value ? String(mask.avatar.value) : '';
+    }
+
+    function maskImage(mask) {
+      return safeImageSrc(maskAvatar(mask), defaultAvatar);
+    }
+
+    function maskNick(mask) {
+      return mask && mask.author && mask.author.value ? htmlToText(String(mask.author.value)) : '';
+    }
+
+    function maskStatus(mask) {
+      return mask && mask.title && mask.title.value ? htmlToText(String(mask.title.value)) : '';
+    }
+
+    function isAvatarOnlyMask(mask) {
+      const keys = Object.keys(mask || {});
+      return keys.length === 1 && keys[0] === 'avatar';
+    }
+
+    function maskCaption(mask) {
+      return maskNick(mask) || (isAvatarOnlyMask(mask) ? 'только аватар' : 'без ника');
+    }
+
+    function sameMask(a, b) {
+      if (!a || !b || !Object.keys(a).length) return false;
+      return hasMaskInStorage([JSON.stringify(a)], b) === 0;
+    }
+
+    function parseStoredMask(str) {
+      try {
+        const mask = JSON.parse(str);
+        return mask && typeof mask === 'object' && !Array.isArray(mask) ? mask : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function storedMasks() {
+      const list = [];
+      prevMasks.forEach((str, index) => {
+        const mask = parseStoredMask(str);
+        if (mask) list.push({ index, mask });
+      });
+      return list.reverse();
+    }
+
+    function currentAvatarSrc() {
+      return tmpMask.avatar && checkImage(tmpMask.avatar.value)
+        ? safeImageSrc(tmpMask.avatar.value, getAvatar())
+        : getAvatar();
+    }
+
+    function currentNick() {
+      return maskNick(tmpMask) || window.UserLogin;
+    }
+
+    function getStyle() {
+      const href = opt.styleUrl || HVSS_URLS.style;
+      const exists = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+        .some(link => link.href === href);
+      if (exists) return;
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = href;
+      const docstyle = document.head.querySelector('link[href*="style"]');
+      document.head.insertBefore(style, docstyle);
+    }
+
+    function parseRgb(color) {
+      const match = String(color).match(/rgba?\(([^)]+)\)/);
+      if (!match) return null;
+      const parts = match[1].split(',').map(part => parseFloat(part));
+      return parts.length >= 3 ? { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 } : null;
+    }
+
+    function luminance(rgb) {
+      const channel = value => {
+        const v = value / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b);
+    }
+
+    function contrast(a, b) {
+      const la = luminance(a);
+      const lb = luminance(b);
+      return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+    }
+
+    function getFormBackgroundColor() {
+      let node = (responseMessageField && responseMessageField.parentElement)
+        || document.querySelector('#pun-main') || document.body;
+      while (node && node.nodeType === 1) {
+        const rgb = parseRgb(getComputedStyle(node).backgroundColor);
+        if (rgb && rgb.a > 0.5) return rgb;
+        node = node.parentElement;
+      }
+      return { r: 255, g: 255, b: 255, a: 1 };
+    }
+
+    function getForumAccent() {
+      const background = getFormBackgroundColor();
+      const links = Array.from(document.querySelectorAll('.punbb .post-links a, .punbb .pl-quote a, .punbb .post-content a, .punbb .crumbs a, #pun-crumbs1 a, .punbb a[href]')).slice(0, 300);
+      for (const link of links) {
+        const rgb = parseRgb(getComputedStyle(link).color);
+        if (rgb && rgb.a > 0.5 && contrast(rgb, background) >= 3) {
+          return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+        }
+      }
+      return '';
+    }
+
+    function applyAccent(node) {
+      const accent = getForumAccent();
+      if (node && accent) {
+        node.style.setProperty('--hv-accent', accent);
+        const rgb = parseRgb(accent);
+        node.style.setProperty('--hv-accent-contrast', rgb && luminance(rgb) > 0.4 ? '#000' : '#fff');
+      }
+    }
+
+    function isTransparentBackground(style) {
+      const color = style.backgroundColor;
+      const noColor = !color || color === 'transparent' || /^rgba\((?:[^,]+,){3}\s*0\)$/.test(color);
+      return noColor && (!style.backgroundImage || style.backgroundImage === 'none');
+    }
+
+    function ensurePanelBackground(panel) {
+      if (!panel) return;
+      panel.style.backgroundColor = '';
+      if (!isTransparentBackground(getComputedStyle(panel))) return;
+      const color = getFormBackgroundColor();
+      panel.style.backgroundColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    }
+
+    function addButton() {
+      const form = document.getElementById('form-buttons');
+      if (!form || !(checkAccess() || checkAccessExtended() || getAccessByForumName())) {
+        return null;
+      }
+      const button = document.createElement('td');
+      button.id = 'button-mask';
+      button.title = 'Маска профиля';
+      button.innerHTML = `<img src="${HVSS_URLS.blankImage}" alt="">`;
+      const bgImage = opt.buttonImage || HVSS_URLS.buttonImage;
+      button.style.backgroundImage = 'url("' + bgImage + '")';
+      form.getElementsByTagName('tr')[0].appendChild(button);
+      applyAccent(button);
+      maskButton = button;
+      return button;
+    }
+
+    function getDialog() {
+      const button = addButton();
+      if (button) {
+        button.addEventListener('click', event => {
+          event.preventDefault();
+          const hasAnyAccess = checkAccess() || checkAccessExtended() || Boolean(getAccessByForumName());
+          if (!hasAnyAccess) return;
+          togglePopover(button);
+        });
+      }
+      if (!byId('mask_dialog')) {
+        const main = document.querySelector('#pun-main') || document.querySelector('div.punbb') || document.body;
+        main.appendChild(buildMaskDialog());
+      }
+      ensureLayer();
+    }
+
+    function mountChip(form) {
+      let wrap = form.querySelector('.hv-post-as');
+      if (!wrap) {
+        const chipId = 'hv-chip-' + Math.random().toString(36).slice(2, 8);
+        const chip = el('button', {
+          type: 'button',
+          id: chipId,
+          className: 'hv-chip',
+          'aria-haspopup': 'dialog',
+          'aria-expanded': 'false'
+        }, [
+          makeImg(getAvatar(), 'hv-chip-avatar'),
+          el('b', { className: 'hv-chip-nick' }),
+          el('i', { className: 'hv-chip-flag hv-chip-pin', title: 'Маска закреплена в этой теме', html: ICONS.pin }),
+          el('i', { className: 'hv-chip-flag hv-chip-code', title: 'Код маски в тексте поста', html: ICONS.code }),
+          el('i', { className: 'hv-chip-caret', html: ICONS.caretUp })
+        ]);
+        chip.addEventListener('click', event => {
+          event.preventDefault();
+          togglePopover(chip);
+        });
+        const caption = el('em', { className: 'hv-post-as-label', text: '', 'aria-hidden': 'true' });
+        caption.addEventListener('click', () => togglePopover(chip));
+        wrap = el('div', { className: 'hv-post-as hv-root' }, [
+          el('div', { className: 'hv-post-as-inner' }, [caption, chip])
+        ]);
+        placeChip(form, wrap);
+        applyAccent(wrap);
+      }
+      ui.chip = wrap.querySelector('.hv-chip');
+    }
+
+    function placeChip(form, wrap) {
+      const submitRow = form.querySelector('.formsubmit');
+      if (submitRow && submitRow.parentNode) {
+        submitRow.parentNode.insertBefore(wrap, submitRow);
+      } else {
+        wrap.classList.add('is-static');
+        responseMessageField.parentNode.insertBefore(wrap, responseMessageField.nextSibling);
+      }
+    }
+
+    function refreshUi() {
+      renderIndicator();
+      if (ui.open) {
+        renderPopover();
+      }
+    }
+
+    function updateInsertCodeButtonState() {
+      refreshUi();
+    }
+
+    function getMaskStorage() {
+      refreshUi();
+    }
+
+    function renderIndicator() {
+      const hasMask = hasActiveMask();
+      const pinned = hasMask && topicPinned;
+      const code = hasMask && isMaskCodeInMessage();
+      const nick = hasMask ? currentNick() : window.UserLogin;
+      if (maskButton) {
+        maskButton.classList.toggle('hv-has-mask', hasMask);
+        maskButton.title = hasMask ? 'Маска профиля: ' + nick : 'Маска профиля';
+      }
+      document.querySelectorAll('.hv-chip').forEach(chip => {
+        chip.classList.toggle('is-masked', hasMask);
+        chip.classList.toggle('is-pinned', pinned);
+        chip.classList.toggle('has-code', code);
+        const image = chip.querySelector('.hv-chip-avatar');
+        const src = currentAvatarSrc();
+        if (image && image.getAttribute('src') !== src) {
+          delete image.dataset.hvFallback;
+          image.src = src;
+        }
+        chip.querySelector('.hv-chip-nick').textContent = nick;
+        const expanded = ui.open && ui.anchor === chip;
+        chip.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        chip.querySelector('.hv-chip-caret').innerHTML = expanded ? ICONS.caretDown : ICONS.caretUp;
+        const parts = [hasMask ? `Пост от ${nick}, маска` : `Пост от ${nick}, без маски`];
+        if (pinned) parts.push('закреплена в этой теме');
+        if (code) parts.push('код маски в тексте поста');
+        chip.title = parts.join(', ') + '. Открыть маски';
+        chip.setAttribute('aria-label', chip.title);
+      });
+    }
+
+    function ensureLayer() {
+      if (ui.layer && document.body.contains(ui.layer)) return ui.layer;
+      ui.layer = el('div', { id: 'hv-mask-layer', className: 'hv-layer hv-root' });
+      ui.shade = el('div', { className: 'hv-shade', hidden: true, onclick: () => closePopover() });
+      ui.popover = el('div', { className: 'hv-popover', role: 'dialog', 'aria-label': 'Маски', hidden: true });
+      ui.layer.appendChild(ui.shade);
+      ui.layer.appendChild(ui.popover);
+      (document.querySelector('div.punbb') || document.body).appendChild(ui.layer);
+      applyAccent(ui.layer);
+      if (!ui.globalBind) {
+        ui.globalBind = true;
+        document.addEventListener('mousedown', onDocumentPointer, true);
+        document.addEventListener('touchstart', onDocumentPointer, { capture: true, passive: true });
+        document.addEventListener('keydown', onDocumentKey);
+        window.addEventListener('resize', () => positionPopover());
+        window.addEventListener('scroll', () => positionPopover(), true);
+      }
+      return ui.layer;
+    }
+
+    function onDocumentPointer(event) {
+      const target = event.target;
+      if (!target || !target.closest) return;
+      if (ui.menu && !ui.menu.contains(target)) {
+        closeTileMenu();
+      }
+      if (!ui.open) return;
+      if (ui.popover.contains(target) || (ui.menu && ui.menu.contains(target))) return;
+      if (target.closest('.hv-chip') || target.closest('#button-mask') || target.closest('#mask_dialog')) return;
+      closePopover();
+    }
+
+    function onDocumentKey(event) {
+      if (event.key !== 'Escape') return;
+      if (ui.menu) {
+        closeTileMenu();
         return;
       }
+      if (isEditorOpen()) {
+        cancelMask();
+        return;
+      }
+      if (ui.open) {
+        const anchor = ui.anchor;
+        closePopover();
+        if (anchor && anchor.focus) anchor.focus();
+      }
+    }
+
+    function togglePopover(anchor) {
+      if (ui.open && ui.anchor === anchor) {
+        closePopover();
+        return;
+      }
+      openPopover(anchor);
+    }
+
+    function openPopover(anchor) {
+      ensureLayer();
+      if (isMaskCodeInMessage()) {
+        adoptMaskFromMessageIfPresent();
+      }
+      ui.anchor = anchor || ui.chip || maskButton;
+      ui.side = null;
+      ui.open = true;
+      ui.popover.hidden = false;
+      renderPopover();
+      renderIndicator();
+    }
+
+    function closePopover() {
+      if (!ui.open) return;
+      ui.open = false;
+      closeTileMenu();
+      ui.popover.hidden = true;
+      ui.shade.hidden = true;
+      renderIndicator();
+    }
+
+    function positionPopover() {
+      if (!ui.open || !ui.popover) return;
+      const sheet = isSheetMode();
+      ui.layer.classList.toggle('is-sheet', sheet);
+      ui.shade.hidden = !sheet;
+      if (sheet) {
+        ui.popover.style.left = '';
+        ui.popover.style.top = '';
+        return;
+      }
+      const anchor = ui.anchor && document.body.contains(ui.anchor) ? ui.anchor : (ui.chip || maskButton);
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = ui.popover.offsetWidth;
+      const height = ui.popover.offsetHeight;
+      const pad = 8;
+      const gap = 6;
+      if (!ui.side) {
+        const fitsAbove = rect.top - height - gap >= pad;
+        const fitsBelow = rect.bottom + gap + height <= window.innerHeight - pad;
+        ui.side = fitsAbove || !fitsBelow && rect.top > window.innerHeight - rect.bottom ? 'above' : 'below';
+      }
+      let top = ui.side === 'above' ? rect.top - height - gap : rect.bottom + gap;
+      top = Math.max(pad, Math.min(top, window.innerHeight - height - pad));
+      const left = Math.min(Math.max(pad, rect.right - width), Math.max(pad, window.innerWidth - width - pad));
+      ui.popover.style.left = Math.round(left) + 'px';
+      ui.popover.style.top = Math.round(top) + 'px';
+    }
+
+    function renderPopover() {
+      if (!ui.popover) return;
+      const panel = buildPanel([
+        el('div', { className: 'hv-pop-title', text: 'Маска профиля' })
+      ]);
+      if (isAvatarOnlyMode()) {
+        buildAvatarOnlyContent(panel);
+      } else {
+        buildFullContent(panel);
+      }
+      const scrollTop = ui.popover.scrollTop;
+      const oldTiles = ui.popover.querySelector('.hv-tiles');
+      const tilesScroll = oldTiles ? [oldTiles.scrollLeft, oldTiles.scrollTop] : [0, 0];
+      ui.popover.replaceChildren(panel);
+      ensurePanelBackground(panel);
+      ui.popover.scrollTop = scrollTop;
+      const newTiles = ui.popover.querySelector('.hv-tiles');
+      if (newTiles) {
+        newTiles.scrollLeft = tilesScroll[0];
+        newTiles.scrollTop = tilesScroll[1];
+      }
+      positionPopover();
+    }
+
+    function reserveRow(node, visible) {
+      if (!node) return null;
+      if (!visible) {
+        node.classList.add('hv-reserve');
+        node.setAttribute('aria-hidden', 'true');
+        node.querySelectorAll('input, button, a').forEach(control => {
+          control.disabled = true;
+          control.tabIndex = -1;
+        });
+      }
+      return node;
+    }
+
+    function buildFullContent(panel) {
       const hasMask = hasActiveMask();
-      const isRememberedMask = hasMask && isRememberTopicMaskEnabled();
-      const avatar = tmpMask.avatar && tmpMask.avatar.value ? tmpMask.avatar.value : getAvatar();
-      const avatarNode = responsePreviewTrigger.querySelector('img');
-      if (avatarNode) {
-        avatarNode.src = checkImage(avatar) ? avatar : getAvatar();
+      const current = el('div', { className: 'hv-pop-section' }, [
+        el('div', { className: 'hv-pop-head' }, [el('b', { text: 'Текущая' })]),
+        el('div', { className: 'hv-current' }, [
+          hasMask ? makeImg(currentAvatarSrc(), 'hv-current-avatar') : el('i', { className: 'hv-current-placeholder' }),
+          el('div', { className: 'hv-current-text' }, [
+            el('div', { className: 'hv-current-name', text: hasMask ? currentNick() : 'Без маски' }),
+            el('div', {
+              className: 'hv-muted hv-current-status',
+              text: hasMask
+                ? maskStatus(tmpMask) || (isAvatarOnlyMask(tmpMask) ? 'меняется только аватар' : '\u00a0')
+                : ''
+            })
+          ])
+        ])
+      ]);
+      current.appendChild(reserveRow(forumActions([
+        forumButton('Редактировать', () => editCurrentMask()),
+        forumButton('Снять', () => takeOffMask())
+      ], 'hv-actions-fill'), hasMask));
+      if (getCurrentTopicId()) {
+        current.appendChild(reserveRow(checkRow('Закрепить в этой теме', 'надевается сама в каждом новом ответе',
+          topicPinned, on => togglePin(on)), hasMask));
       }
-      responsePreviewTrigger.classList.add('hv-mask-state');
-      responsePreviewTrigger.classList.toggle('hv-mask-ready', hasMask);
-      responsePreviewTrigger.classList.toggle('hv-mask-empty', !hasMask);
-      responsePreviewTrigger.classList.toggle('hv-mask-remembered', isRememberedMask);
-      responsePreviewTrigger.title = hasMask
-        ? UserLogin + ' под маской'
-        : UserLogin + ' без маски';
-      if (isRememberedMask) {
-        responsePreviewTrigger.title += ' (закреплена)'
+      if (responseMessageField) {
+        current.appendChild(reserveRow(checkRow('Показать код в поле ответа', 'отредактированный код маски сохранится',
+          isMaskCodeInMessage(), on => toggleCode(on)), hasMask));
       }
-      if (responsePreviewClearButton) {
-        responsePreviewClearButton.classList.toggle('is-visible', hasMask);
-      }
-      updateInsertCodeButtonState();
+      panel.appendChild(current);
+      panel.appendChild(buildMaskList(false));
     }
 
-    function positionResponsePreview() {
-      if (!responsePreviewWrapper || !responsePreviewTrigger) return;
-      const rect = responsePreviewTrigger.getBoundingClientRect();
-      const viewportPadding = 8;
-      const gap = 10;
-      const previewRect = responsePreviewWrapper.getBoundingClientRect();
-      const previewWidth = previewRect.width;
-      const previewHeight = previewRect.height;
-      const maxLeft = Math.max(viewportPadding, window.innerWidth - previewWidth - viewportPadding);
-      const maxTop = Math.max(viewportPadding, window.innerHeight - previewHeight - viewportPadding);
-      const preferredTop = rect.top - 8;
-      const clampedTop = Math.min(Math.max(preferredTop, viewportPadding), maxTop);
-
-      const leftSide = rect.left - previewWidth - gap;
-      const rightSide = rect.right + gap;
-      const canPlaceLeft = leftSide >= viewportPadding;
-      const canPlaceRight = rightSide <= maxLeft;
-
-      let preferredLeft = leftSide;
-      if (!canPlaceLeft && canPlaceRight) {
-        preferredLeft = rightSide;
-      } else if (!canPlaceLeft && !canPlaceRight) {
-        const leftDistance = Math.abs(rect.left - leftSide);
-        const rightDistance = Math.abs(rightSide - rect.right);
-        preferredLeft = leftDistance <= rightDistance ? leftSide : rightSide;
+    function buildAvatarOnlyContent(panel) {
+      panel.appendChild(el('div', {
+        className: 'hv-notice hv-muted',
+        text: 'В этом разделе маска меняет только аватар. Ник, статус и остальное — из профиля.'
+      }));
+      const hasMask = hasActiveMask();
+      const source = hasMask ? storedMasks().find(item => maskAvatar(item.mask) === maskAvatar(tmpMask)) : null;
+      const current = el('div', { className: 'hv-pop-section' }, [
+        el('div', { className: 'hv-pop-head' }, [el('b', { text: 'В этом посте' })]),
+        el('div', { className: 'hv-current' }, [
+          makeImg(currentAvatarSrc(), 'hv-current-avatar'),
+          el('div', { className: 'hv-current-text' }, [
+            el('div', { className: 'hv-current-name', text: window.UserLogin }),
+            el('div', {
+              className: 'hv-muted',
+              text: !hasMask ? 'без маски' : 'под маской'
+            })
+          ]),
+          reserveRow(forumActions([forumButton('Снять', () => takeOffMask())], 'hv-actions-inline'), hasMask)
+        ])
+      ]);
+      if (getCurrentTopicId()) {
+        current.appendChild(reserveRow(checkRow('Закрепить в этой теме', '', topicPinned, on => togglePin(on)), hasMask));
       }
+      panel.appendChild(current);
 
-      const clampedLeft = Math.min(Math.max(preferredLeft, viewportPadding), maxLeft);
-
-      responsePreviewWrapper.style.left = `${clampedLeft}px`;
-      responsePreviewWrapper.style.top = `${clampedTop}px`;
-    }
-
-    function showResponsePreview() {
-      if (!responsePreviewWrapper) return;
-      responsePreviewWrapper.classList.add('is-visible');
-      positionResponsePreview();
-    }
-
-    function hideResponsePreview() {
-      if (!responsePreviewWrapper || responsePreviewPinned) return;
-      responsePreviewWrapper.classList.remove('is-visible');
-    }
-
-    function bindResponsePreviewEvents() {
-      if (!responsePreviewTrigger || !responsePreviewWrapper || responsePreviewTrigger.dataset.hvPreviewBind) return;
-      responsePreviewTrigger.dataset.hvPreviewBind = '1';
-
-      responsePreviewTrigger.addEventListener('mouseenter', () => {
-        showResponsePreview();
+      const list = buildMaskList(true);
+      const tag = changeList.avatar.tag.split(',')[0];
+      const controls = buildAvatarControls({
+        placeholder: 'Ссылка на картинку',
+        onUrl: url => pickMask({ avatar: { tag, value: url } }),
+        nameHint: () => ''
       });
-      responsePreviewTrigger.addEventListener('mouseleave', () => {
-        setTimeout(() => {
-          if (responsePreviewWrapper && !responsePreviewWrapper.matches(':hover')) {
-            hideResponsePreview();
+      controls.input.addEventListener('change', () => {
+        const value = controls.input.value.trim();
+        if (!value) return;
+        if (!checkImage(value) || !/^https?:\/\//i.test(value)) {
+          controls.setStatus('Нужна прямая ссылка на картинку jpg, gif, png или webp', true);
+          return;
+        }
+        pickMask({ avatar: { tag, value } });
+      });
+      list.appendChild(controls.row);
+      list.appendChild(el('div', {
+        className: 'hv-muted hv-small',
+        text: canUpload() ? 'После загрузки ссылка подставится сама.' : ''
+      }));
+      list.appendChild(controls.status);
+      panel.appendChild(list);
+    }
+
+    function buildMaskList(avatarOnly) {
+      const all = storedMasks();
+      const list = avatarOnly ? all.filter(item => checkImage(maskAvatar(item.mask))) : all;
+      const section = el('div', { className: 'hv-pop-section' });
+      const head = el('div', { className: 'hv-pop-head' }, [
+        el('b', { text: avatarOnly ? 'Мои аватары' : 'Мои маски' }),
+        el('span', {
+          className: 'hv-muted',
+          text: avatarOnly ? String(list.length) : `масок: ${prevMasks.length}/${maskLimit}`
+        })
+      ]);
+      const grid = el('div', { className: 'hv-tiles' + (avatarOnly ? ' hv-tiles-avatars' : '') });
+      list.forEach(item => grid.appendChild(buildTile(item.mask, item.index, avatarOnly)));
+      if (!avatarOnly) {
+        grid.appendChild(el('button', {
+          type: 'button',
+          className: 'hv-tile hv-tile-new',
+          title: 'Новая маска',
+          onclick: event => {
+            event.preventDefault();
+            openEditor({}, { title: 'Новая маска' });
           }
-        }, 40);
-      });
-      responsePreviewTrigger.addEventListener('click', event => {
+        }, [el('i', { className: 'hv-tile-plus', text: '+' }), el('b', { className: 'hv-tile-name', text: 'Новая' })]));
+      }
+      section.appendChild(head);
+      section.appendChild(grid);
+      let hint = '';
+      if (avatarOnly) {
+        hint = list.length ? 'Маски без аватара здесь не показаны.' : 'Нет сохраненных аватаров.';
+      } else if (list.length) {
+        hint = isTouchUi()
+          ? 'Нажмите — надеть. Удерживайте — изменить или удалить.'
+          : 'Лкм — надеть, пкм — изменить или удалить.';
+      }
+      if (hint) {
+        section.appendChild(el('div', { className: 'hv-muted hv-small hv-hint', text: hint }));
+      }
+      return section;
+    }
+
+    function buildTile(mask, index, avatarOnly) {
+      const active = avatarOnly
+        ? hasActiveMask() && maskAvatar(tmpMask) === maskAvatar(mask)
+        : sameMask(tmpMask, normalizeMaskByAccess(mask));
+      const caption = maskCaption(mask);
+      const status = maskStatus(mask);
+      const tile = el('button', {
+        type: 'button',
+        className: 'hv-tile' + (active ? ' is-active' : ''),
+        title: status ? `${caption} — ${status}` : caption,
+        'aria-pressed': active ? 'true' : 'false',
+        'aria-label': avatarOnly ? 'Аватар маски ' + caption : null,
+        dataset: { search: (caption + ' ' + status).toLowerCase() }
+      }, [
+        makeImg(maskImage(mask), 'hv-tile-avatar'),
+        avatarOnly ? null : el('b', { className: 'hv-tile-name', text: caption })
+      ]);
+      tile.addEventListener('click', event => {
         event.preventDefault();
-        event.stopPropagation();
-        responsePreviewPinned = true;
-        showResponsePreview();
-      });
-
-      responsePreviewWrapper.addEventListener('mouseleave', () => {
-        hideResponsePreview();
-      });
-
-      document.addEventListener('click', event => {
-        if (!responsePreviewPinned) return;
-        if (event.target.closest('.hvMiniProfile') || event.target.closest('.hv-editor-preview')) return;
-        responsePreviewPinned = false;
-        hideResponsePreview();
-      });
-
-      window.addEventListener('scroll', () => {
-        if (responsePreviewWrapper.classList.contains('is-visible')) {
-          positionResponsePreview();
+        if (tile.dataset.longPress) {
+          delete tile.dataset.longPress;
+          return;
         }
-      }, true);
-      window.addEventListener('resize', () => {
-        if (responsePreviewWrapper.classList.contains('is-visible')) {
-          positionResponsePreview();
+        pickMask(avatarOnly ? { avatar: mask.avatar } : mask);
+      });
+      if (!avatarOnly) {
+        tile.addEventListener('contextmenu', event => {
+          event.preventDefault();
+          openTileMenu(event.clientX, event.clientY, index);
+        });
+        let timer = null;
+        tile.addEventListener('touchstart', event => {
+          const touch = event.touches[0];
+          timer = setTimeout(() => {
+            tile.dataset.longPress = '1';
+            openTileMenu(touch.clientX, touch.clientY, index);
+          }, 550);
+        }, { passive: true });
+        ['touchend', 'touchmove', 'touchcancel'].forEach(name => {
+          tile.addEventListener(name, () => clearTimeout(timer), { passive: true });
+        });
+      }
+      return tile;
+    }
+
+    function openTileMenu(x, y, index) {
+      closeTileMenu();
+      const panel = buildPanel([
+        forumActions([
+          forumButton('Редактировать', () => {
+            closeTileMenu();
+            editStoredMask(index);
+          }),
+          forumButton('Удалить', () => {
+            closeTileMenu();
+            deleteMaskFromStorage(index);
+          })
+        ], 'hv-actions-column')
+      ]);
+      ui.menu = el('div', { className: 'hv-menu', role: 'menu' }, [panel]);
+      ui.layer.appendChild(ui.menu);
+      ensurePanelBackground(panel);
+      const width = ui.menu.offsetWidth;
+      const height = ui.menu.offsetHeight;
+      ui.menu.style.left = Math.max(8, Math.min(x, window.innerWidth - width - 8)) + 'px';
+      ui.menu.style.top = Math.max(8, Math.min(y, window.innerHeight - height - 8)) + 'px';
+    }
+
+    function closeTileMenu() {
+      if (ui.menu) {
+        ui.menu.remove();
+        ui.menu = null;
+      }
+    }
+
+    function pickMask(mask) {
+      const wasPinned = topicPinned;
+      fillForm(mask);
+      persistOnSubmit = true;
+      if (wasPinned) {
+        const state = getTopicMaskState(getCurrentTopicId());
+        if (!state || !sameMask(state.mask, tmpMask)) {
+          togglePin(false);
+        }
+      }
+      syncCodeInMessage();
+      refreshUi();
+    }
+
+    function takeOffMask() {
+      if (topicPinned) {
+        togglePin(false);
+      }
+      clearMask();
+    }
+
+    function togglePin(on) {
+      const topicId = getCurrentTopicId();
+      if (!topicId) return;
+      if (!on) {
+        topicPinned = false;
+        removeTopicMaskState(topicId);
+        refreshUi();
+        return;
+      }
+      adoptMaskFromMessageIfPresent();
+      const maskToSave = getEffectiveMask();
+      if (Object.keys(maskToSave).length) {
+        topicPinned = true;
+        setTopicMaskState(topicId, { remember: true, mask: cloneMask(maskToSave) });
+      }
+      refreshUi();
+    }
+
+    function toggleCode(on) {
+      if (on) {
+        insertMaskCodeToMessage();
+      } else {
+        removeMaskCodeFromMessage();
+      }
+      refreshUi();
+    }
+
+    function syncCodeInMessage() {
+      if (!isMaskCodeInMessage()) return;
+      if (hasActiveMask()) {
+        insertMaskCodeToMessage();
+      } else {
+        removeMaskCodeFromMessage({ skipAdopt: true });
+      }
+    }
+
+    function editCurrentMask() {
+      const storedIndex = hasMaskInStorage(prevMasks, tmpMask);
+      openEditor(cloneMask(tmpMask), { title: 'Маска', original: storedIndex !== -1 ? cloneMask(tmpMask) : null });
+    }
+
+    function editStoredMask(index) {
+      const mask = parseStoredMask(prevMasks[index]);
+      if (mask) {
+        openEditor(mask, { title: 'Маска', original: mask });
+      }
+    }
+
+    function deleteMaskFromStorage(index) {
+      const target = prevMasks[index];
+      if (target === undefined) return;
+      if (!confirm('Точно удалить маску?')) return;
+
+      const remote = fetchRemoteMasks();
+      if (!remote.ok) {
+        $.jGrowl('Не удалось загрузить список масок, маска не удалена. Попробуйте ещё раз.');
+        return;
+      }
+      const nextMasks = remote.masks.slice();
+      const position = nextMasks.indexOf(target);
+      if (position !== -1) {
+        nextMasks.splice(position, 1);
+        if (!writeRemoteMasks(nextMasks).ok) {
+          $.jGrowl('Ошибка удаления, попробуй ещё раз.');
+          return;
+        }
+      }
+      prevMasks = nextMasks;
+      refreshUi();
+    }
+
+    function canUpload() {
+      return Boolean(window.UploadsURL && window.UserUploadsDir && window.ForumAPITicket && window.UserID
+        && window.FormData && window.fetch);
+    }
+
+    async function uploadAvatar(file, nameHint) {
+      if (!/^image\/(gif|jpe?g|png|webp)$/i.test(file.type)) {
+        throw new Error('Можно загрузить только gif, jpg, png или webp');
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error('Файл больше 10 МБ');
+      }
+      const extMatch = file.name.match(/\.[a-z0-9]+$/i);
+      const ext = extMatch ? extMatch[0] : '.' + file.type.split('/')[1];
+      const base = (nameHint ? 'Маска — ' + nameHint : file.name.replace(/\.[^.]+$/, ''))
+        .replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'avatar';
+      const data = new FormData();
+      data.append('method', 'upload.userfile');
+      data.append('user_id', window.UserID);
+      data.append('token', window.ForumAPITicket);
+      data.append('thumb_width', '120');
+      data.append('files[]', file, base + ext);
+      let json = null;
+      let response = null;
+      try {
+        response = await fetch(HVSS_URLS.upload, { method: 'POST', body: data, credentials: 'same-origin' });
+        json = await response.json();
+      } catch (e) {
+        throw new Error('Не удалось загрузить файл, попробуй ещё раз');
+      }
+      const filename = json && json.response && json.response.filename;
+      if (!response.ok || !filename) {
+        const message = json && json.error && (json.error.message || json.error.text);
+        throw new Error(message || 'Форум не принял файл');
+      }
+      return window.UploadsURL + window.UserUploadsDir + '/' + filename;
+    }
+
+    // options: { input?, placeholder?, onUrl(url), nameHint() }
+    function buildAvatarControls(options) {
+      const input = options.input || el('input', {
+        type: 'text',
+        inputmode: 'url',
+        placeholder: options.placeholder || 'Ссылка на картинку',
+        'aria-label': 'Ссылка на аватар'
+      });
+      const status = el('span', { className: 'hv-status hv-muted hv-small', 'aria-live': 'polite' });
+      const setStatus = (text, isError) => {
+        status.textContent = text || '';
+        status.classList.toggle('is-error', Boolean(isError));
+      };
+      const parts = [input];
+      let uploadButton = null;
+      const file = el('input', { type: 'file', accept: 'image/gif,image/jpeg,image/png,image/webp', hidden: true });
+      if (canUpload()) {
+        uploadButton = forumButton('Загрузить', () => file.click());
+        parts.push(forumActions([uploadButton], 'hv-actions-inline'), file);
+      }
+      const row = el('div', { className: 'hv-inline-row hv-drop-target' }, parts);
+
+      async function handleFile(selected) {
+        if (!selected) return;
+        if (uploadButton) uploadButton.disabled = true;
+        setStatus(`Загружаю ${selected.name}…`);
+        try {
+          const url = await uploadAvatar(selected, options.nameHint ? options.nameHint() : '');
+          input.value = url;
+          setStatus(`✓ ${selected.name} загружен на форум, ссылка подставлена`);
+          options.onUrl(url);
+        } catch (e) {
+          setStatus(e.message || 'Не удалось загрузить файл', true);
+        } finally {
+          if (uploadButton) uploadButton.disabled = false;
+          file.value = '';
+        }
+      }
+
+      if (canUpload()) {
+        file.addEventListener('change', () => handleFile(file.files[0]));
+        row.addEventListener('dragover', event => {
+          event.preventDefault();
+          row.classList.add('is-dragover');
+        });
+        row.addEventListener('dragleave', () => row.classList.remove('is-dragover'));
+        row.addEventListener('drop', event => {
+          event.preventDefault();
+          row.classList.remove('is-dragover');
+          handleFile(event.dataTransfer && event.dataTransfer.files[0]);
+        });
+      }
+      return { row, input, status, setStatus };
+    }
+
+    // ---- редактор ----
+    function buildMaskDialog() {
+      const dialog = el('div', { id: 'mask_dialog', className: 'hv-root', style: 'display: none' });
+      const bg = el('div', { className: 'hv-bg' });
+      bg.addEventListener('mousedown', event => {
+        if (event.target === bg) cancelMask();
+      });
+      const inner = el('div', {
+        className: 'inner hv-dialog',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-labelledby': 'hv-dialog-title'
+      });
+      const back = el('a', {
+        href: '#',
+        className: 'hv-back',
+        text: '‹ к маскам',
+        onclick: event => {
+          event.preventDefault();
+          cancelMask();
+          openPopover(ui.chip || maskButton);
         }
       });
+      ui.dialogTitle = el('span', { id: 'hv-dialog-title', text: 'Маска профиля' });
+      const title = el('div', { className: 'hv-mask-dialog-title' }, [back, ui.dialogTitle]);
+      const errorListBlock = el('ul', { className: 'hv-error-list', style: 'display: none' });
+
+      previewForm = el('div', { className: 'hv-preview' });
+      const form = el('form', { id: 'mask_form', className: 'hv-editor-form', novalidate: true });
+      form.addEventListener('submit', event => event.preventDefault());
+      const fields = el('div', { className: 'hv-editor-fields' });
+      buildEditorFields(fields);
+
+      const body = el('div', { className: 'hv-editor-body' }, [opt.showPreview === false ? null : previewForm, fields]);
+      ui.saveCheckbox = el('input', { type: 'checkbox' });
+      ui.saveCheckbox.defaultChecked = true;
+      ui.saveCheckbox.checked = true;
+      const footer = el('div', { className: 'hv-editor-footer' }, [
+        el('label', { className: 'hv-check' }, [ui.saveCheckbox, el('span', { text: 'Сохранить в «Мои маски»' })]),
+        forumActions([
+          forumButton('Надеть маску', () => applyEditor()),
+          forumButton('Отмена', () => cancelMask())
+        ])
+      ]);
+
+      form.appendChild(body);
+      form.appendChild(footer);
+      inner.appendChild(title);
+      inner.appendChild(errorListBlock);
+      inner.appendChild(form);
+      bg.appendChild(inner);
+      dialog.appendChild(bg);
+      ui.dialogInner = inner;
+      applyAccent(dialog);
+      resetPreview();
+      syncFormExtras(form);
+      return dialog;
+    }
+
+    function buildEditorFields(form) {
+      const allowed = getAllowedDialogMaskFields();
+      const keys = Object.keys(changeList).filter(key => allowed.includes(key));
+      const pair = ['author', 'title'].filter(key => keys.includes(key));
+      const base = ['author', 'title', 'avatar', 'signature'];
+      const ordered = []
+        .concat(keys.filter(key => key === 'avatar'))
+        .concat(keys.filter(key => !base.includes(key)))
+        .concat(keys.filter(key => key === 'signature'));
+      if (pair.length === 2) {
+        form.appendChild(el('div', { className: 'hv-field-row' }, pair.map(buildField)));
+      } else {
+        pair.forEach(key => form.appendChild(buildField(key)));
+      }
+      ordered.forEach(key => form.appendChild(buildField(key)));
+      form.appendChild(el('div', { className: 'hv-muted hv-small', text: 'Пустые поля остаются как в профиле.' }));
+    }
+
+    function buildField(key) {
+      const conf = changeList[key];
+      const id = 'mask_' + key;
+      const isArea = ['html', 'signature', 'bbcode'].includes(conf.type);
+      const input = isArea
+        ? el('textarea', { id, rows: '2', placeholder: '' })
+        : el('input', { type: 'text', id, autocomplete: 'off' });
+      if (key === 'avatar') {
+        input.setAttribute('inputmode', 'url');
+        input.placeholder = 'https://…';
+      }
+      const head = el('div', { className: 'hv-field-head' }, [el('label', { for: id }, [el('b', { text: conf.title })])]);
+      if (conf.description) {
+        head.appendChild(el('span', { className: 'hv-muted hv-small', text: conf.description }));
+      }
+      head.appendChild(el('i', { className: 'hv-spacer' }));
+      const limit = key === 'author' ? 25 : key === 'title' ? 50 : 0;
+      if (limit) {
+        head.appendChild(el('span', { className: 'hv-muted hv-small hv-count', dataset: { field: key, limit: String(limit) } }));
+      }
+
+      const apply = () => applyFieldValue(key);
+      input.addEventListener('blur', apply);
+      input.addEventListener('change', apply);
+      input.addEventListener('input', () => {
+        syncFormExtras();
+        if (key === 'author' || key === 'title') {
+          changeMaskForm(key, input.value);
+        }
+      });
+
+      if (conf.defaultCode) {
+        const code = conf.defaultCode;
+        if (typeof code === 'string') {
+          head.appendChild(forumActions([forumButton('« вставить шаблон', () => {
+            input.value = code;
+            apply();
+          }, 'hv-add-template')], 'hv-actions-inline'));
+        }
+        if (Array.isArray(code)) {
+          const select = el('select', { className: 'hv-add-template', 'aria-label': 'Вставить шаблон' },
+            [el('option', { value: '', text: 'Вставить шаблон' })]
+              .concat(code.map(item => el('option', { value: item.template, text: item.name }))));
+          select.addEventListener('change', () => {
+            if (!select.value) return;
+            input.value = select.value;
+            select.value = '';
+            apply();
+          });
+          head.appendChild(select);
+        }
+      }
+
+      const wrapper = el('div', { className: `hv-field hv-field-${key}` }, [head]);
+      if (key === 'avatar') {
+        const controls = buildAvatarControls({
+          input,
+          onUrl: () => applyFieldValue('avatar'),
+          nameHint: () => {
+            const author = byId('mask_author');
+            return author ? author.value.trim() : '';
+          }
+        });
+        ui.avatarStatus = controls.setStatus;
+        wrapper.appendChild(controls.row);
+        wrapper.appendChild(controls.status);
+      } else {
+        wrapper.appendChild(el('span', { className: 'input' }, [input]));
+      }
+      if (key === 'signature') {
+        const hide = el('input', { type: 'checkbox', id: 'mask_signature_hide' });
+        hide.addEventListener('change', () => {
+          if (hide.checked) input.value = '';
+          syncFormExtras();
+          applyFieldValue('signature');
+        });
+        head.appendChild(el('label', { className: 'hv-check hv-check-inline' }, [hide, el('span', { text: 'Скрыть подпись' })]));
+        wrapper.appendChild(el('div', { className: 'hv-muted hv-small hv-sig-caption' }));
+      }
+      return wrapper;
+    }
+
+    function syncFormExtras(formArg) {
+      const form = formArg || byId('mask_form');
+      if (!form) return;
+      form.querySelectorAll('.hv-count').forEach(counter => {
+        const input = form.querySelector('#mask_' + counter.dataset.field);
+        const limit = Number(counter.dataset.limit);
+        const length = input ? textLength(input.value) : 0;
+        counter.textContent = `${length}/${limit}`;
+        counter.classList.toggle('is-error', length > limit);
+      });
+      const hide = form.querySelector('#mask_signature_hide');
+      const signature = form.querySelector('#mask_signature');
+      if (hide && signature) {
+        signature.disabled = hide.checked;
+        signature.placeholder = hide.checked ? 'Подпись скрыта' : 'Подпись';
+      }
+    }
+
+    function readFieldValue(key) {
+      const input = byId('mask_' + key);
+      if (!input) return '';
+      if (key === 'signature') {
+        const hide = byId('mask_signature_hide');
+        if (hide && hide.checked) return NO_SIGNATURE;
+      }
+      return input.value;
+    }
+
+    function setFieldValue(key, value) {
+      const input = byId('mask_' + key);
+      if (!input) return;
+      if (key === 'signature') {
+        const hide = byId('mask_signature_hide');
+        const hidden = value === NO_SIGNATURE;
+        if (hide) hide.checked = hidden;
+        input.value = hidden ? '' : value;
+        return;
+      }
+      input.value = value;
+    }
+
+    function applyFieldValue(key) {
+      if (!byId('mask_' + key)) return;
+      const value = readFieldValue(key);
+      if (value !== '' && !checkHtml(value)) {
+        tmpMask[key] = {
+          'tag': changeList[key].tag.split(',')[0],
+          'value': value
+        };
+      } else {
+        delete tmpMask[key];
+      }
+      changeMaskForm(key, value === NO_SIGNATURE ? '' : value);
+      refreshUi();
+    }
+
+    function fillForm(obj) {
+      const form = byId('mask_form');
+      const normalizedMask = normalizeMaskByAccess(obj || {});
+      for (let change in changeList) {
+        if (!changeList.hasOwnProperty(change)) continue;
+        const field = form ? form.querySelector('#mask_' + change) : null;
+        if (!field) {
+          delete tmpMask[change];
+          changeMaskForm(change, '');
+          continue;
+        }
+        if (normalizedMask[change]) {
+          const value = String(normalizedMask[change].value);
+          setFieldValue(change, value);
+          tmpMask[change] = {
+            'tag': normalizedMask[change].tag,
+            'value': normalizedMask[change].value
+          };
+          changeMaskForm(change, value === NO_SIGNATURE ? '' : value);
+        } else {
+          setFieldValue(change, '');
+          delete tmpMask[change];
+          changeMaskForm(change, '');
+        }
+      }
+      syncFormExtras();
+      refreshUi();
+    }
+
+    function openEditor(mask, options = {}) {
+      closePopover();
+      const dialog = byId('mask_dialog');
+      if (!dialog) return;
+      dialogMaskSnapshot = cloneMask(tmpMask);
+      editorOriginalMask = options.original ? cloneMask(options.original) : null;
+      errorList = {};
+      resetPreview();
+      fillForm(mask || {});
+      if (ui.dialogTitle) ui.dialogTitle.textContent = options.title || 'Маска профиля';
+      if (ui.saveCheckbox) ui.saveCheckbox.checked = true;
+      if (ui.avatarStatus) ui.avatarStatus('');
+      showErrors();
+      dialog.style.display = 'block';
+      ensurePanelBackground(ui.dialogInner);
+      const first = dialog.querySelector('#mask_form input[type="text"], #mask_form textarea');
+      if (first) first.focus();
+    }
+
+    function hideMaskDialog() {
+      const dialog = byId('mask_dialog');
+      if (dialog) dialog.style.display = 'none';
+    }
+
+    function isEditorOpen() {
+      const dialog = byId('mask_dialog');
+      return Boolean(dialog && dialog.style.display !== 'none');
+    }
+
+    function applyEditor() {
+      Object.keys(changeList).forEach(key => applyFieldValue(key));
+      delete errorList.common;
+      if (Object.keys(errorList).length) {
+        showErrors();
+        return;
+      }
+      const save = !ui.saveCheckbox || ui.saveCheckbox.checked;
+      persistOnSubmit = save;
+      if (save && hasActiveMask()) {
+        if (!persistMaskToUserStorage(tmpMask, { updateUi: true, replace: editorOriginalMask })) {
+          return;
+        }
+      }
+      const topicId = getCurrentTopicId();
+      if (topicPinned && topicId) {
+        if (hasActiveMask()) {
+          setTopicMaskState(topicId, { remember: true, mask: cloneMask(tmpMask) });
+        } else {
+          togglePin(false);
+        }
+      }
+      syncCodeInMessage();
+      editorOriginalMask = null;
+      hideMaskDialog();
+      refreshUi();
+    }
+
+    function cancelMask() {
+      errorList = {};
+      showErrors();
+      fillForm(dialogMaskSnapshot || {});
+      editorOriginalMask = null;
+      hideMaskDialog();
+    }
+
+    function clearMask() {
+      removeMaskCodeFromMessage({ skipAdopt: true });
+      tmpMask = {};
+      errorList = {};
+      const form = byId('mask_form');
+      if (form) form.reset();
+      syncFormExtras();
+      Object.keys(changeList).forEach(key => changeMaskForm(key, ''));
+      showErrors();
+      refreshUi();
+    }
+
+    function showErrors() {
+      const block = document.querySelector('#mask_dialog .hv-error-list');
+      if (!block) return;
+      block.replaceChildren();
+      Object.keys(errorList).forEach(key => block.appendChild(el('li', { text: errorList[key] })));
+      block.style.display = Object.keys(errorList).length ? 'block' : 'none';
+    }
+
+    function buildPreviewPost() {
+      let authorClass = 'post-author topic-starter online';
+      let list = null;
+      const own = Array.from(document.querySelectorAll('.post[data-user-id]')).find(post =>
+        post.dataset.userId === String(window.UserID)
+        && !post.closest('#mask_dialog')
+        && post.querySelector('.post-author ul:not(.hv-mask)'));
+      if (own) {
+        const author = own.querySelector('.post-author');
+        authorClass = author.className.replace(/\bhv-mask\b/g, '').trim();
+        list = author.querySelector('ul').cloneNode(true);
+      } else {
+        list = el('ul');
+      }
+      const order = key => {
+        const index = userFields.indexOf(changeList[key].class);
+        return index === -1 ? 999 : index;
+      };
+      Object.keys(changeList)
+        .filter(key => key !== 'signature')
+        .sort((a, b) => order(a) - order(b))
+        .forEach(key => {
+          const cls = changeList[key].class;
+          let item = list.querySelector('.' + cls);
+          if (!item) {
+            item = el('li', { className: cls });
+            const position = userFields.indexOf(cls);
+            const next = position === -1 ? null : userFields.slice(position + 1)
+              .map(name => list.querySelector('.' + name)).find(Boolean);
+            if (next) {
+              next.parentNode.insertBefore(item, next);
+            } else {
+              list.appendChild(item);
+            }
+            if (key === 'author') {
+              item.innerHTML = '<span class="acchide">Автор:&nbsp;</span><a href="#" rel="nofollow"></a>';
+              item.querySelector('a').textContent = window.UserLogin;
+            } else if (key === 'title') {
+              item.textContent = getUserTitle();
+            }
+          }
+          if (key === 'avatar' && !item.querySelector('img')) {
+            item.appendChild(el('img', { src: getAvatar(), alt: '' }));
+          }
+          item.classList.add('hv-preview-' + key);
+          item.hvOriginal = item.innerHTML;
+        });
+      list.querySelectorAll('a').forEach(link => {
+        link.setAttribute('href', '#');
+        link.setAttribute('tabindex', '-1');
+      });
+      const author = el('div', { className: authorClass }, [list]);
+      const post = el('div', { className: 'post topic-starter hv-preview-post' }, [el('div', { className: 'container' }, [author])]);
+      let root = el('div', { className: 'topic hv-preview-topic' }, [post]);
+      const topicScope = document.getElementById('pun-viewtopic');
+      if (!topicScope || topicScope.closest('.hv-preview')) {
+        root = el('div', { id: 'pun-viewtopic', className: 'hv-preview-scope' }, [root]);
+      }
+      return root;
+    }
+
+    function resetPreview() {
+      if (!previewForm) return;
+      previewForm.replaceChildren(
+        el('div', { className: 'hv-muted hv-small hv-preview-caption', text: 'Предпросмотр' }),
+        buildPreviewPost()
+      );
+    }
+
+    function updatePreviewField(field, callback) {
+      if (!previewForm || !previewForm.querySelector) return;
+      const node = previewForm.querySelector(`.hv-preview-${field}`);
+      if (node) callback(node);
+    }
+
+    function restorePreviewField(field) {
+      updatePreviewField(field, node => {
+        if (node.hvOriginal !== undefined) node.innerHTML = node.hvOriginal;
+      });
+    }
+
+    function changeMaskForm(field, value) {
+      switch (field) {
+        case 'signature':
+          break;
+        case 'avatar':
+          if (value !== '' && !checkImage(value)) {
+            errorList[field] = 'В поле [Аватар] должна быть ссылка на картинку формата jpg, gif, png или webp';
+          } else {
+            delete errorList[field];
+            updatePreviewField(field, node => {
+              const image = node.querySelector('img');
+              if (image) {
+                image.src = safeImageSrc(value, getAvatar());
+                image.removeAttribute('width');
+                image.removeAttribute('height');
+              }
+            });
+          }
+          break;
+        case 'author':
+          if (textLength(value) > 25) {
+            errorList[field] = 'Поле [Ник] не должно содержать больше 25 символов';
+          } else {
+            delete errorList[field];
+            if (value === '') {
+              restorePreviewField(field);
+            } else {
+              updatePreviewField(field, node => {
+                const link = node.querySelector('a');
+                (link || node).textContent = value;
+              });
+            }
+          }
+          break;
+        case 'title':
+          if (textLength(value) > 50) {
+            errorList[field] = 'Поле [Статус] не должно содержать больше 50 символов';
+          } else {
+            delete errorList[field];
+            if (value === '') {
+              restorePreviewField(field);
+            } else {
+              updatePreviewField(field, node => {
+                node.textContent = value;
+              });
+            }
+          }
+          break;
+        default: {
+          const str = value || '';
+          if (textLength(str) > 999) {
+            errorList[field] = `Поле [${changeList[field].title}] не должно содержать больше 999 символов`;
+            break;
+          }
+          delete errorList[field];
+          if (str === '') {
+            restorePreviewField(field);
+            break;
+          }
+          switch (changeList[field].type) {
+            case 'text':
+              updatePreviewField(field, node => {
+                node.textContent = str;
+              });
+              break;
+            case 'bbcode':
+              updatePreviewField(field, node => {
+                const violation = setSafeHtml(node, bbcodeToHtml(str));
+                if (violation) {
+                  errorList[field] = `В поле [${changeList[field].title}] ${violation}`;
+                }
+              });
+              break;
+            default: {
+              const violation = checkHtml(str);
+              if (violation) {
+                errorList[field] = `В поле [${changeList[field].title}] ${violation}`;
+              } else {
+                updatePreviewField(field, node => {
+                  setSafeHtml(node, str);
+                });
+              }
+            }
+          }
+        }
+      }
+      showErrors();
+    }
+
+    function updateRememberTopicMaskState() {
+      const topicId = getCurrentTopicId();
+      topicPinned = false;
+      if (!topicId) return;
+      const state = getTopicMaskState(topicId);
+      const hasSavedMask = Boolean(state && state.mask && Object.keys(state.mask).length);
+      topicPinned = Boolean(state && state.remember === true && hasSavedMask);
+      if (state && state.remember === true && !hasSavedMask) {
+        removeTopicMaskState(topicId);
+      }
+    }
+
+    function syncTopicMaskOnSubmit() {
+      const topicId = getCurrentTopicId();
+      adoptMaskFromMessageIfPresent();
+      const maskToSave = getEffectiveMask();
+      if (!topicId) return;
+      if (!topicPinned || !Object.keys(maskToSave).length) {
+        if (!Object.keys(maskToSave).length) topicPinned = false;
+        removeTopicMaskState(topicId);
+        return;
+      }
+      setTopicMaskState(topicId, {
+        remember: true,
+        mask: cloneMask(maskToSave)
+      });
+    }
+
+    function restoreMaskAfterPost() {
+      if (!responseMessageField) return;
+      const topicMaskState = getTopicMaskState(getCurrentTopicId());
+      if (topicMaskState && topicMaskState.remember && topicMaskState.mask
+        && Object.keys(topicMaskState.mask).length) {
+        fillForm(normalizeMaskByAccess(topicMaskState.mask));
+      } else {
+        clearMask();
+      }
+      updateRememberTopicMaskState();
+      refreshUi();
     }
 
     function initResponsePreview(fromEdit = false) {
       responseMessageField = Array.from(document.querySelectorAll('textarea[name="req_message"]'))
-        .find(el => !el.closest('#hv_preview_form')) || null;
+        .find(field => !field.closest('#mask_dialog')) || null;
       if (!responseMessageField) return;
 
       const form = responseMessageField.form;
@@ -1929,60 +2575,14 @@ const hvScriptSet = {
         clearMask();
       }
 
-      if (!responsePreviewWrapper) {
-        responsePreviewWrapper = document.createElement('div');
-        responsePreviewWrapper.className = 'hv-editor-preview';
-        responsePreviewWrapper.innerHTML = '';
-        const previewBlock = document.createElement('div');
-        previewBlock.className = 'hv-preview-block';
-        responsePreviewWrapper.appendChild(previewBlock);
-        responsePreviewInsertCodeButton = document.createElement('button');
-        responsePreviewInsertCodeButton.type = 'button';
-        responsePreviewInsertCodeButton.className = 'hv-preview-insert-code';
-        responsePreviewInsertCodeButton.textContent = 'Показать код';
-        responsePreviewInsertCodeButton.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          toggleMaskCodeInMessage();
-        });
-        responsePreviewWrapper.appendChild(responsePreviewInsertCodeButton);
-        responsePreviewClearButton = document.createElement('button');
-        responsePreviewClearButton.type = 'button';
-        responsePreviewClearButton.className = 'hv-editor-preview-clear';
-        responsePreviewClearButton.textContent = 'Снять маску';
-        responsePreviewClearButton.addEventListener('click', event => {
-          event.preventDefault();
-          clearMask();
-        });
-        responsePreviewWrapper.appendChild(responsePreviewClearButton);
-        const punbbContainer = document.querySelector('div.punbb');
-        (punbbContainer || document.body).appendChild(responsePreviewWrapper);
-      } else {
-        responsePreviewInsertCodeButton = responsePreviewWrapper.querySelector('.hv-preview-insert-code');
-        responsePreviewClearButton = responsePreviewWrapper.querySelector('.hv-editor-preview-clear');
+      ensureLayer();
+      mountChip(form);
+      if (!responseMessageField.dataset.hvInputBind) {
+        responseMessageField.dataset.hvInputBind = '1';
+        responseMessageField.addEventListener('input', () => renderIndicator());
       }
+      refreshUi();
 
-      if (!responsePreviewTrigger) {
-        const triggerWrapper = document.createElement('div');
-        triggerWrapper.className = 'hvMiniProfileWrapper';
-        responsePreviewTrigger = document.createElement('div');
-        responsePreviewTrigger.className = 'hvMiniProfile';
-        responsePreviewTrigger.innerHTML = `<img src="${getAvatar()}" alt="preview">`;
-        triggerWrapper.appendChild(responsePreviewTrigger);
-        responseMessageField.parentNode.insertBefore(triggerWrapper, responseMessageField);
-      }
-
-      responsePreviewForm = responsePreviewWrapper.querySelector('.hv-preview-block');
-      clearPreview(responsePreviewForm, true);
-
-      for (let key in changeList) {
-        if (changeList.hasOwnProperty(key)) {
-          const value = tmpMask[key] ? tmpMask[key].value : '';
-          changeMaskForm(key, value);
-        }
-      }
-      updateMaskButtonIndicator();
-      bindResponsePreviewEvents();
       let isPreparingMask = false;
 
       function prepareMaskForPost() {
@@ -1990,7 +2590,9 @@ const hvScriptSet = {
         injectMaskToMessage();
         if (!fromEdit) {
           syncTopicMaskOnSubmit();
-          persistMaskToUserStorage(getEffectiveMask());
+          if (persistOnSubmit) {
+            persistMaskToUserStorage(getEffectiveMask());
+          }
         }
         isPreparingMask = true;
         setTimeout(() => {
@@ -2004,9 +2606,8 @@ const hvScriptSet = {
           prepareMaskForPost();
         }, true);
 
-        const ajaxPost = document.querySelector('.ajax-post');
-
-        if (!!ajaxPost) {
+        const ajaxPost = form.querySelector('.ajax-post') || document.querySelector('.ajax-post');
+        if (ajaxPost) {
           ajaxPost.addEventListener('click', () => {
             prepareMaskForPost();
           }, true);
@@ -2025,6 +2626,7 @@ const hvScriptSet = {
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const MATHML_NS = 'http://www.w3.org/1998/Math/MathML';
     const XLINK_NS = 'http://www.w3.org/1999/xlink';
+    const HTML_NS = 'http://www.w3.org/1999/xhtml';
 
     const forbiddenTags = ['input', 'button', 'script', 'iframe', 'frame', 'frameset', 'style', 'audio', 'video',
       'form', 'footer', 'header', 'head', 'html', 'body', 'map', 'select', 'textarea', 'xmp', 'object', 'embed',
@@ -2051,7 +2653,7 @@ const hvScriptSet = {
       try {
         const removeElements = [];
         forbiddenTags.forEach(name => {
-          removeElements.push({ name, namespace: 'http://www.w3.org/1999/xhtml' });
+          removeElements.push({ name, namespace: HTML_NS });
           removeElements.push({ name, namespace: SVG_NS });
         });
         ['animateMotion', 'animateTransform', 'foreignObject'].forEach(name =>
@@ -2221,10 +2823,6 @@ const hvScriptSet = {
       return tempStr;
     }
 
-    function checkImage(src) {
-      return (/\.jpg|\.png|\.gif/.test(src));
-    }
-
     function clearResponse(data) {
       const result = [];
 
@@ -2232,7 +2830,7 @@ const hvScriptSet = {
         try {
           // в 2025 году внутренний хостинг файлов mybb сменился, фикс автоматически заменяет ссылки
           const cleanSrt = str
-            .replace(/https?:\/\/forumupload.ru\//gi, 'https://upforme.ru/');
+            .replace(/https?:\/\/forumupload\.ru\//gi, 'https://upforme.ru/');
           JSON.parse(cleanSrt);
           result.push(cleanSrt);
         } catch (e) {
@@ -2279,7 +2877,7 @@ const hvScriptSet = {
     function saveMaskSettings(localSettings) {
       $.ajax({
         async: false,
-        url: '/api.php',
+        url: HVSS_URLS.api,
         data: {
           method: 'storage.get',
           key: 'profileMaskSettings',
@@ -2291,7 +2889,7 @@ const hvScriptSet = {
             return; // настройки уже сохранены
           }
 
-          $.post('/api.php', {
+          $.post(HVSS_URLS.api, {
             method: 'storage.set',
             token: window.ForumAPITicket,
             key: 'profileMaskSettings',
@@ -2303,7 +2901,7 @@ const hvScriptSet = {
     }
 
     async function getMaskSettings() {
-      const { response } = await $.get('/api.php', {
+      const { response } = await $.get(HVSS_URLS.api, {
         method: 'storage.get',
         token: window.ForumAPITicket,
         key: 'profileMaskSettings',

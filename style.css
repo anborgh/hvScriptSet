@@ -1,492 +1,738 @@
-#mask_dialog .hv-bg {
-    position: fixed;
-    display: flex;
-    align-content: center;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    width: 100%;
-    height: 100%;
-    left: 0;
-    top: 0;
-    background: rgba(0, 0, 0, .4);
-    cursor: pointer;
-}
-
-#mask_dialog .inner {
-    cursor: default;
-    margin: 0;
-    width: 760px;
-    max-width: 99%;
-    max-height: 90%;
-    overflow-x: auto;
-    z-index: 100;
-    box-shadow: 0 0 40px #222;
-    background: #F4F5F6 url("https://i.imgur.com/akmlat3.png");
-    padding: 8px;
-}
-
-#mask_dialog .inner * {
-    box-sizing: border-box;
-}
-
-#mask_dialog .hv-mask-dialog-title {
-    text-align: center;
-    font-weight: 700;
-    font-size: 18px;
-    line-height: 34px;
-    position: relative;
-}
-
-#mask_dialog .hv-error-list {
-    padding: 8px;
-    margin: 8px;
-    background: #DAA396;
-    color: #BD0909;
-    border: solid 1px;
-}
-
-#mask_dialog .hv-mask-block {
-    display: flex;
-    justify-content: space-between;
-    align-items: stretch;
-}
-
-#mask_dialog .hv-preview-block {
-    flex: 0 0 120px;
-    text-align: center;
-    max-width: 120px;
-    overflow: hidden;
-    word-break: break-word;
-    max-height: 360px;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-#mask_dialog .hv-preview-block > div {
-    padding: 3px 0;
-}
-
-#mask_dialog .hv-form-block {
-    flex: 1 1 auto;
-    max-height: 360px;
-    overflow-y: auto;
-}
-
-#mask_dialog .hv-preview-block img {
-    max-width: 100px;
-}
-
-#mask_dialog .hv-form-block {
-    flex: 1 1 auto;
-}
-
-#mask_dialog .hv-form-block label {
-    display: block;
-    margin-bottom: px;
-}
-
-#mask_dialog  .hv-form-block label:after {
-    content: "";
-    display: table;
-    clear: both;
-    margin-bottom: 2px;
-}
-
-#mask_dialog .hv-description {
-    font-size: .9em;
-    color: #999;
-    font-style: italic;
-}
-
-#mask_dialog .hv-add-template {
-    cursor: pointer;
-    float: right;
-    padding: 2px 4px;
-    border: solid 1px #ccc;
-}
-
-#mask_dialog .hv-form-block input,
-#mask_dialog .hv-form-block textarea {
-    width: 100%;
-}
-
-#mask_dialog .hv-mask-field {
-    position: relative;
-}
-
-#mask_dialog .hv-mask-field + .hv-mask-field {
-    margin-top: 10px;
-}
-
-#mask_dialog .hv-masks-storage {
-    flex: 0 1 150px;
-    display: flex;
-    align-items: flex-start;
-    align-content: flex-start;
-    justify-content: flex-start;
-    padding: 8px;
-    flex-wrap: wrap;
-    list-style: none;
-    max-height: 360px;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-#mask_dialog .hv-masks-storage.hidden {
-    display: none;
-}
-
-#mask_dialog .hv-mask-element {
-    width: 60px;
-    padding: 4px;
-    position: relative;
-}
-
-#mask_dialog .hv-mask-element img {
-    max-width: 100%;
-    cursor: pointer;
-}
-
-.hv-storage-count {
-    flex: 1 1 100%;
-    width: 100%;
-    text-align: center;
-    padding-bottom: 6px;
-    color: #999;
-    font-size: 10px;
-}
-
-#mask_dialog .hv-mask-tooltip {
-    position: absolute;
-    top: 4px;
-    min-width: 160px;
-    right: 60px;
-    padding: 4px;
-    z-index: 5;
-    overflow-y: auto;
-    background: rgba(255, 255, 255, .6);
-    border: solid 1px #ccc;
-    display: none;
-}
-
-#mask_dialog .hv-mask-element > img:hover + .hv-mask-tooltip {
-    display: block;
-}
-
-#mask_dialog .hv-mask-tooltip > * {
-    zoom: .7
-}
-
-#mask_dialog .hv-delete-mask {
-    display: block;
-    font-size: 10px;
-    text-align: center;
-    cursor: pointer;
-}
-
-#mask_dialog .hv-control {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.hv-mask-tipsy {
-    max-width: 280px;
-}
+/*
+ * hvScriptSet — маска профиля.
+ * Здесь только раскладка. Цвета, шрифты, кнопки и поля приходят из стиля форума:
+ * кнопки библиотеки лежат в .formsubmit внутри form, поля — обычные input/textarea внутри .punbb,
+ * фон панелей скрипт берёт у блока вокруг формы ответа, акцент (--hv-accent) — у ссылок форума.
+ *
+ * Свой фон окна по-прежнему можно задать в «Своём стиле»:
+ *   #mask_dialog .inner, .hv-popover .hv-panel { background: ...; }
+ *
+ * Плашка «Пост от»: блок .hv-post-as нулевой высоты стоит прямо перед .formsubmit,
+ * плашка .hv-post-as-inner внутри прижата к правому краю, вровень со строкой кнопок.
+ * Сдвинуть её: --hv-chip-top, --hv-chip-right. Перенести влево или по центру — см. README.
+ */
 
 .post-content .hvmask {
     display: none;
 }
 
-.hvMiniProfileWrapper {
-    position: relative;
-    width: 0;
-    height: 0;
-    margin: -1px;
-    z-index: 10;
+.hv-root,
+.hv-layer {
+    --hv-line: rgba(128, 128, 128, .4);
 }
 
-.hvMiniProfile {
-    position: absolute;
-    right: 8px;
-    top: 8px;
-    padding: 4px;
-    background: #ffffff33;
-    box-shadow: 0 0 1px 0 rgba(0, 0, 0, .5);
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.hvMiniProfile img {
-    max-width: 32px;
-    transition: all ease-out .5s;
-    opacity: .5;
-    display: block;
-}
-
-.hvMiniProfile.hv-mask-state::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #d47b24;
-    opacity: 0;
-    z-index: 1;
-    transition: opacity .2s ease-out;
-}
-
-.hvMiniProfile.hv-mask-state::before {
-    content: '';
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 6px;
-    height: 6px;
-    background: center/contain no-repeat;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 94.666 94.666'%3E%3Cpath fill='%23ffffff' d='M76.923,35.406h-3.128v-8.945C73.795,11.871,61.924,0,47.333,0S20.871,11.871,20.871,26.461v8.945h-3.128c-1.104,0-2,0.896-2,2v55.26c0,1.104,0.896,2,2,2h59.18c1.104,0,2-0.896,2-2v-55.26C78.923,36.302,78.028,35.406,76.923,35.406zM47.333,11.181c8.426,0,15.281,6.854,15.281,15.28v8.945H32.052v-8.945C32.052,18.036,38.907,11.181,47.333,11.181z'/%3E%3C/svg%3E");
-    opacity: 0;
-    transition: opacity .2s ease-out;
-    z-index: 2;
-}
-
-.hvMiniProfile.hv-mask-ready img,
-.hvMiniProfile.hv-mask-ready::after {
-    opacity: 1;
-}
-
-.hvMiniProfile.hv-mask-remembered::before {
-    opacity: 1;
-}
-
-.hv-editor-preview {
-    position: fixed;
-    z-index: 10010;
-    width: 140px;
-    border: 1px solid rgba(0, 0, 0, .1);
-    background: rgba(255, 255, 255, .7);
-    text-align: center;
-    word-break: break-word;
-    display: none;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, .16);
-    overflow: hidden;
-    transform: scale(0.7);
-    transform-origin: top left;
-}
-
-.hv-editor-preview.is-visible {
-    display: block;
-}
-
-.hv-editor-preview .hv-preview-caption {
-    margin-bottom: 6px;
-    font-size: 11px;
-    color: #777;
-    text-transform: uppercase;
-}
-
-.hv-editor-preview .post-author {
-    margin: 0;
-}
-
-.hv-editor-preview .post-author ul {
-    margin: 0;
-    padding: 8px;
-    list-style: none;
-}
-
-.hv-editor-preview .post-author li {
-    padding: 2px 0;
-}
-
-.hv-editor-preview .hv-preview-block img {
-    max-width: 100px;
-}
-
-.hv-editor-preview .hv-preview-block {
-    position: relative;
-    max-height: 280px;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.hv-editor-preview .hv-preview-block * {
-    max-width: 100% !important;
+.hv-root *,
+.hv-layer * {
     box-sizing: border-box;
-    word-break: break-word;
-    overflow-wrap: anywhere;
 }
 
-.hv-editor-preview .hv-preview-block ul > :empty {
-    display: none;
+.hv-muted {
+    opacity: .75;
 }
 
-.hv-editor-preview .hv-preview-block .hv-preview-avatar img,
-.hv-editor-preview .hv-preview-block img {
-    height: auto !important;
-    max-height: 200px !important;
+.hv-small {
+    font-size: .92em;
 }
 
-.hv-editor-preview .hv-preview-block [style*="position:fixed"],
-.hv-editor-preview .hv-preview-block [style*="position: fixed"],
-.hv-editor-preview .hv-preview-block [style*="position:absolute"],
-.hv-editor-preview .hv-preview-block [style*="position: absolute"] {
-    position: static !important;
-    inset: auto !important;
-    left: auto !important;
-    right: auto !important;
-    top: auto !important;
-    bottom: auto !important;
-    transform: none !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-}
-
-.hv-editor-preview .hv-preview-block a {
-    pointer-events: none !important;
-    cursor: default !important;
-}
-
-.hv-editor-preview .hv-preview-insert-code,
-.hv-editor-preview .hv-editor-preview-clear {
-    display: none;
-    margin: 2px auto;
-    cursor: pointer;
-}
-
-.hv-editor-preview .hv-preview-insert-code.is-visible,
-.hv-editor-preview .hv-editor-preview-clear.is-visible {
+.hv-icon {
     display: block;
 }
 
-.hv-editor-preview .hv-preview-insert-code.is-active {
-    font-weight: bold;
-}
-
-#mask_dialog .hv-options-menu {
-    display: inline-block;
-    vertical-align: middle;
-    position: relative;
-}
-
-#mask_dialog .hv-options-menu > summary {
-    display: inline-block;
-    cursor: pointer;
-    user-select: none;
-    list-style: none;
-}
-
-#mask_dialog .hv-options-menu > summary::-webkit-details-marker {
-    display: none;
-}
-
-#mask_dialog .hv-options-list {
-    position: absolute;
-    z-index: 10;
-    left: 0;
-    top: auto;
-    bottom: calc(100% + 4px);
-    min-width: 260px;
-    padding: 8px;
-    background: #F4F5F6 url("https://i.imgur.com/akmlat3.png");
-    border: 1px solid #ccc;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
-    color: unset;
+/* Сброс оформления контейнера .formsubmit: кнопки внутри остаются форумными */
+.hv-root .formsubmit.hv-actions,
+.hv-layer .formsubmit.hv-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    margin: 10px 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
     text-align: left;
 }
 
-#mask_dialog .hv-options-list label {
-    display: block;
+.hv-root .formsubmit.hv-actions .button,
+.hv-layer .formsubmit.hv-actions .button {
+    flex: none;
     margin: 0;
+}
+
+.hv-root .formsubmit.hv-actions-inline,
+.hv-layer .formsubmit.hv-actions-inline {
+    margin: 0;
+    flex: none;
+}
+
+.hv-root .formsubmit.hv-actions-fill .button,
+.hv-layer .formsubmit.hv-actions-fill .button {
+    flex: 1 1 0;
+}
+
+.hv-root .formsubmit.hv-actions-column,
+.hv-layer .formsubmit.hv-actions-column {
+    margin: 0;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+/* ---- кнопка на панели bb-кодов ---- */
+
+#button-mask {
+    position: relative;
+}
+
+#button-mask.hv-has-mask::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--hv-accent, currentColor);
+}
+
+/* ---- плашка «Пост от» ---- */
+
+.hv-post-as {
+    position: relative;
+    z-index: 2;
+    height: 0;
+}
+
+.hv-post-as-inner {
+    position: absolute;
+    top: var(--hv-chip-top, 0);
+    right: var(--hv-chip-right, 0);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
     white-space: nowrap;
 }
 
-#mask_dialog .hv-options-list label + label {
-    margin-top: 6px;
+/* Формы без .formsubmit: обычная строка под полем ответа */
+.hv-post-as.is-static {
+    height: auto;
 }
 
-#mask_dialog .hv-options-list input[type="checkbox"] {
-    margin-right: 6px;
+.hv-post-as.is-static .hv-post-as-inner {
+    position: static;
+    justify-content: flex-end;
+    margin-top: 8px;
 }
 
-#mask_dialog .hv-topic-mask-toggle {
-    --hv-topic-mask-color-inactive: #666;
-    --hv-topic-mask-color-active: #d47b24;
-    display: inline-flex;
+.hv-post-as-label {
+    font-style: normal;
+    cursor: pointer;
+    opacity: .8;
+    white-space: nowrap;
+}
+
+/*
+ * Плашка и плитки масок — свои элементы библиотеки, а не форумные кнопки.
+ * Многие скины оформляют любой <button>, поэтому сброс здесь с !important.
+ */
+.hv-chip {
+    display: inline-flex !important;
     align-items: center;
-    justify-content: center;
-    min-width: 32px;
-    color: var(--hv-topic-mask-color-inactive);
+    gap: 6px;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 28px !important;
+    max-width: 260px;
+    margin: 0 !important;
+    padding: 2px 8px 2px 2px !important;
+    border: 1px solid var(--hv-line) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: inherit !important;
+    font: inherit !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    text-shadow: none !important;
+    line-height: 1.2 !important;
+    text-align: left;
+    cursor: pointer;
 }
 
-#mask_dialog .hv-topic-mask-toggle.is-active {
-    color: var(--hv-topic-mask-color-active);
+.hv-chip:hover,
+.hv-chip:focus-visible {
+    border-color: var(--hv-accent, currentColor) !important;
 }
 
-#mask_dialog .hv-topic-mask-toggle .hv-topic-mask-icon {
-    width: 16px;
-    height: 16px;
+.hv-chip.is-masked {
+    border-color: var(--hv-accent, currentColor) !important;
+    box-shadow: inset 0 0 0 1px var(--hv-accent, currentColor) !important;
+}
+
+.hv-chip-avatar {
+    flex: none;
+    display: block;
+    width: 24px;
+    height: 24px;
+    object-fit: cover;
+}
+
+.hv-chip-nick {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: normal;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.hv-chip.is-masked .hv-chip-nick {
+    font-weight: bold;
+}
+
+.hv-chip-flag,
+.hv-chip-caret {
+    flex: none;
+    font-style: normal;
+    line-height: 0;
+}
+
+.hv-chip-flag {
+    display: none;
+    color: var(--hv-accent, currentColor);
+}
+
+.hv-chip.is-pinned .hv-chip-pin,
+.hv-chip.has-code .hv-chip-code {
+    display: inline-block;
+}
+
+.hv-chip-caret {
+    opacity: .7;
+}
+
+/* ---- меню масок ---- */
+
+.hv-popover {
+    position: fixed;
+    z-index: 1001;
+    width: 360px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    overflow: auto;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, .35);
+    text-align: left;
+}
+
+.hv-popover[hidden],
+.hv-shade[hidden],
+.hv-tile[hidden] {
     display: none;
 }
 
-#mask_dialog .hv-topic-mask-toggle.is-active .hv-topic-mask-icon-locked {
+.hv-panel {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 0;
+}
+
+.hv-pop-title {
+    margin: 0 0 4px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.hv-pop-section {
+    padding: 8px 0;
+}
+
+.hv-pop-section + .hv-pop-section {
+    border-top: 1px solid var(--hv-line);
+}
+
+.hv-pop-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.hv-current {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.hv-current-avatar,
+.hv-current-placeholder {
+    flex: none;
+    display: block;
+    width: 48px;
+    height: 60px;
+    object-fit: cover;
+}
+
+.hv-current-placeholder {
+    border: 1px dashed var(--hv-line);
+}
+
+.hv-current-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.hv-current-name,
+.hv-current-status {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.hv-current-name {
+    font-size: 1.15em;
+    font-weight: bold;
+}
+
+/* Строки, которые появляются только при надетой маске */
+.hv-reserve {
+    display: none !important;
+}
+
+.hv-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 8px 0 0;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.hv-check input[type="checkbox"] {
+    flex: none;
+    width: auto;
+    margin: 2px 0 0;
+}
+
+.hv-check small {
     display: block;
 }
 
-#mask_dialog .hv-topic-mask-toggle.is-inactive .hv-topic-mask-icon-unlocked {
+.hv-check-inline {
+    margin: 0;
+    align-items: center;
+}
+
+.hv-check-inline input[type="checkbox"] {
+    margin: 0;
+}
+
+.hv-tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.hv-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 4px 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    color: inherit !important;
+    font: inherit !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    text-shadow: none !important;
+    cursor: pointer;
+}
+
+.hv-tile-avatar,
+.hv-tile-plus {
+    display: block;
+    width: 52px;
+    height: 64px;
+    object-fit: cover;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
+
+.hv-tile:hover .hv-tile-avatar,
+.hv-tile:focus-visible .hv-tile-avatar {
+    outline-color: var(--hv-line);
+}
+
+.hv-tile.is-active .hv-tile-avatar {
+    outline-color: var(--hv-accent, currentColor);
+}
+
+.hv-tile-name {
+    max-width: 100%;
+    overflow: hidden;
+    font-weight: normal;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.hv-tile.is-active .hv-tile-name {
+    font-weight: bold;
+}
+
+.hv-tile-plus {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--hv-line);
+    font-size: 22px;
+    font-style: normal;
+    line-height: 1;
+}
+
+.hv-tiles-avatars {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.hv-tiles-avatars .hv-tile-avatar {
+    width: 100%;
+    height: 60px;
+}
+
+.hv-hint {
+    margin-top: 6px;
+}
+
+.hv-notice {
+    margin: 4px 0;
+    padding: 6px 8px;
+    border: 1px solid var(--hv-line);
+}
+
+.hv-inline-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.hv-root .hv-inline-row input[type="text"],
+.hv-layer .hv-inline-row input[type="text"] {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+}
+
+.hv-drop-target.is-dragover {
+    outline: 2px dashed var(--hv-accent, currentColor);
+    outline-offset: 2px;
+}
+
+.hv-status {
+    display: block;
+    margin-top: 4px;
+}
+
+.hv-status:empty {
+    display: none;
+}
+
+.hv-status.is-error,
+.hv-count.is-error {
+    color: #c0392b;
+    opacity: 1;
+}
+
+.hv-menu {
+    position: fixed;
+    z-index: 1002;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
+}
+
+.hv-shade {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, .4);
+}
+
+.hv-layer:not(.is-sheet) .hv-shade {
+    display: none;
+}
+
+/* ---- редактор маски ---- */
+
+#mask_dialog .hv-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, .4);
+}
+
+#mask_dialog .inner {
+    width: 800px;
+    max-width: 100%;
+    max-height: 100%;
+    margin: 0;
+    padding: 10px 12px;
+    overflow: auto;
+    box-shadow: 0 0 40px rgba(0, 0, 0, .6);
+    text-align: left;
+}
+
+#mask_dialog .hv-mask-dialog-title {
+    position: relative;
+    margin-bottom: 6px;
+    font-size: 1.4em;
+    font-weight: bold;
+    line-height: 1.6;
+    text-align: center;
+}
+
+#mask_dialog .hv-back {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    font-size: .72em;
+    font-weight: normal;
+}
+
+#mask_dialog .hv-error-list {
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    border: 1px solid #c0392b;
+    color: #c0392b;
+    list-style: none;
+}
+
+.hv-editor-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.hv-preview {
+    flex: none;
+    max-width: 280px;
+    overflow: hidden;
+}
+
+.hv-preview-caption {
+    margin-bottom: 4px;
+}
+
+/* Скины часто сдвигают блок автора вверх — оставляем ему место под подписью */
+.hv-preview-topic {
+    padding-top: 1.5em;
+}
+
+.hv-preview img {
+    max-width: 100%;
+    height: auto;
+}
+
+.hv-preview a {
+    pointer-events: none;
+}
+
+.hv-editor-fields {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+}
+
+.hv-field-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.hv-field {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.hv-field-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    margin-bottom: 3px;
+}
+
+.hv-field-head label {
+    font-weight: normal;
+}
+
+.hv-spacer {
+    flex: 1 1 auto;
+}
+
+.hv-field .input {
     display: block;
 }
 
-@media (max-width: 768px) {
-    #mask_dialog .inner {
-        width: 100%;
-        max-width: 100%;
-        max-height: 100%;
-        padding: 8px 6px;
-        overflow-x: hidden;
-    }
+.hv-root .hv-field input[type="text"],
+.hv-root .hv-field textarea {
+    width: 100%;
+}
 
-    #mask_dialog .hv-mask-block {
-        flex-wrap: wrap;
-    }
+.hv-root .hv-field input.button,
+.hv-layer input.button {
+    width: auto;
+}
 
-    #mask_dialog .hv-preview-block {
+.hv-field textarea {
+    min-height: 3.5em;
+    resize: vertical;
+}
+
+.hv-field textarea:disabled {
+    opacity: .55;
+}
+
+.hv-field .hv-inline-row {
+    margin-top: 0;
+}
+
+.hv-sig-caption {
+    margin-top: 3px;
+}
+
+.hv-editor-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--hv-line);
+}
+
+.hv-editor-footer .hv-check {
+    margin: 0;
+    align-items: center;
+}
+
+.hv-root .hv-editor-footer .formsubmit.hv-actions {
+    margin: 0 0 0 auto;
+}
+
+/* ---- телефон: меню — нижняя шторка ---- */
+
+@media (max-width: 640px) {
+    /* Компактная плашка: только аватар, состояния — значками по углам */
+    .hv-post-as-label,
+    .hv-chip-nick,
+    .hv-chip-caret {
         display: none;
     }
 
-    #mask_dialog .hv-form-block {
-        flex: 1 1 100%;
-        max-height: none;
-        overflow: visible;
+    .hv-chip {
+        position: relative;
+        justify-content: center;
+        min-width: 44px !important;
+        min-height: 44px !important;
+        padding: 4px !important;
     }
 
-    #mask_dialog .hv-masks-storage {
-        order: 2;
-        flex: 1 1 100%;
-        max-height: none;
-        margin-top: 8px;
-        padding: 8px 0;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
+    .hv-chip-avatar {
+        width: 34px;
+        height: 34px;
     }
 
-    #mask_dialog .hv-mask-element {
-        flex: 0 0 68px;
+    .hv-chip-flag {
+        position: absolute;
+        right: -7px;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--hv-accent, currentColor);
+        color: var(--hv-accent-contrast, #fff);
     }
 
-    #mask_dialog .hv-storage-count {
-        flex: 0 0 auto;
+    .hv-chip.is-pinned .hv-chip-pin,
+    .hv-chip.has-code .hv-chip-code {
+        display: flex;
+    }
+
+    .hv-chip-pin {
+        top: -7px;
+    }
+
+    .hv-chip-code {
+        bottom: -7px;
+    }
+
+    .hv-chip-flag .hv-icon {
+        width: 11px;
+        height: 11px;
+    }
+
+    .hv-popover {
+        top: auto !important;
+        right: 0;
+        bottom: 0;
+        left: 0 !important;
         width: auto;
-        white-space: nowrap;
-        padding: 0 8px 0 0;
-        text-align: left;
+        max-width: none;
+        max-height: 85vh;
+    }
+
+    .hv-tiles,
+    .hv-tiles-avatars {
+        display: flex;
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+
+    .hv-tile {
+        flex: 0 0 64px;
+    }
+
+    .hv-check {
+        min-height: 32px;
+    }
+
+    #mask_dialog .hv-bg {
+        align-items: stretch;
+        padding: 0;
+    }
+
+    #mask_dialog .inner {
+        width: 100%;
+    }
+
+    .hv-editor-body {
+        flex-direction: column;
+    }
+
+    .hv-preview {
+        display: none;
+    }
+
+    .hv-field-row {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
