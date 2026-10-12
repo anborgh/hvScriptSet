@@ -169,10 +169,15 @@ const hvScriptSet = {
 
       for (let _i in changedPosts) {
         if (changedPosts.hasOwnProperty(_i)) {
-          changedPosts[_i].username = checkAccess[changedPosts[_i].userId].username;
-          changedPosts[_i].groupId = checkAccess[changedPosts[_i].userId].groupId;
-          changedPosts[_i].groupTitle = checkAccess[changedPosts[_i].userId].groupTitle;
-          changedPosts[_i].access = checkAccess[changedPosts[_i].userId].access;
+          const userInfo = checkAccess[changedPosts[_i].userId];
+          if (!userInfo) {
+            delete changedPosts[_i];
+            continue;
+          }
+          changedPosts[_i].username = userInfo.username;
+          changedPosts[_i].groupId = userInfo.groupId;
+          changedPosts[_i].groupTitle = userInfo.groupTitle;
+          changedPosts[_i].access = userInfo.access;
 
           if (changedPosts[_i].changeList.avatar && changedPosts[_i].access.common) {
             if (!changedPosts[_i].profile.querySelector('.pa-avatar img')) {
@@ -264,10 +269,14 @@ const hvScriptSet = {
                   break;
                 case 'link':
                   var linkContent = truncateText(htmlToText(changedPosts[_i].changeList[change].content), 25);
-                  fieldEl.querySelector('a').textContent = linkContent;
+                  const nickLink = fieldEl.querySelector('a');
+                  if (!nickLink) {
+                    fieldEl.textContent = linkContent;
+                    break;
+                  }
+                  nickLink.textContent = linkContent;
 
                   if (change === 'author' && canQuoteMask) {
-                    const nickLink = fieldEl.querySelector('a');
                     nickLink.href = nickLink.href.includes('profile')
                       ? nickLink.href
                       : `javascript:to(${toJsUrlString(linkContent)})`;
@@ -283,7 +292,7 @@ const hvScriptSet = {
                     changedPosts[_i].signature = null;
                     break;
                   }
-                  if (window.GroupID !== '3') {
+                  if (window.GroupID !== 3) {
                     if (!changedPosts[_i].signature) {
                       let signEl = document.createElement('dl');
                       signEl.className = 'post-sig';
@@ -440,7 +449,7 @@ const hvScriptSet = {
             for (let i in json.response.users) {
               if (json.response.users.hasOwnProperty(i)) {
                 usersInfo[json.response.users[i].user_id] = {
-                  'userId': i,
+                  'userId': String(json.response.users[i].user_id),
                   'username': json.response.users[i].username,
                   'groupId': json.response.users[i].group_id,
                   'groupTitle': json.response.users[i].group_title
@@ -2924,7 +2933,7 @@ const hvScriptSet = {
     }
 
     function getClearedPost(post, chList) {
-      let codeBoxes = post.innerHTML.match(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi, '|code-box-replacer|');
+      let codeBoxes = post.innerHTML.match(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi) || [];
       let text = post.innerHTML.replace(/<div class="code-box"><strong class="legend">([\s\S]*?)?<\/strong><div class="blockcode"><div class="scrollbox" style="(?:.*?)"><pre>([\s\S]*?)?<\/pre><\/div><\/div><\/div>/gi, '|code-box-replacer|')
         .replace(/<dl class="post-sig">([\s\S]*?)?<\/dl>/g, '');
       for (let ch in chList) {
@@ -2933,9 +2942,9 @@ const hvScriptSet = {
           text = text.replace(pattern, '');
         }
       }
-      for (let i in codeBoxes) {
-        text = text.replace(/\|code-box-replacer\|/i, codeBoxes[i]);
-      }
+      codeBoxes.forEach(box => {
+        text = text.replace(/\|code-box-replacer\|/i, () => box);
+      });
       return text;
     }
 
@@ -2949,10 +2958,9 @@ const hvScriptSet = {
       if (window.GroupID === 1 || window.GroupID === 2) return 'extended';
 
       const crumbs = document.getElementById('pun-crumbs1');
-      const crumbLinks = crumbs.querySelectorAll('a[href*="viewforum"]');
-      const link = crumbLinks[crumbLinks.length-1];
-      let name = link.textContent;
-      name = getClearedForumName(name);
+      const crumbLinks = crumbs ? crumbs.querySelectorAll('a[href*="viewforum"]') : [];
+      const link = crumbLinks[crumbLinks.length - 1];
+      const name = link ? getClearedForumName(link.textContent) : '';
 
       if (opt.forumAccessExtended && opt.forumAccessExtended[name]) {
         if (opt.forumAccessExtended[name].includes(window.GroupTitle)) {
@@ -2994,10 +3002,11 @@ const hvScriptSet = {
       that.inited = true;
     }
 
-    if (!options) {
+    if (!options || document.readyState !== 'loading') {
       init();
+    } else {
+      document.addEventListener('DOMContentLoaded', () => init());
     }
-    document.addEventListener('DOMContentLoaded', () => init());
     $(document).on('pun_post', () => {
       getPosts();
       restoreMaskAfterPost();

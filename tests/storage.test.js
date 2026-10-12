@@ -578,9 +578,15 @@ describe('доступ к отладочным данным', () => {
 
   it('access: ошибки внутри проверок не роняют getter', async () => {
     await setup([], {}, { forum: { topic: undefined } });
-    env.win.document.getElementById('pun-crumbs1').remove();
+    env.win.FORUM = undefined;
     assert.doesNotThrow(() => env.data.access);
-    assert.match(String(env.data.access.forumAccessLevel), /^error: /);
+    assert.match(String(env.data.access.checkAccess), /^error: /);
+  });
+
+  it('access: без хлебных крошек уровень не определён, но не падает', async () => {
+    await setup([], {}, { forum: { topic: undefined } });
+    env.win.document.getElementById('pun-crumbs1').remove();
+    assert.doesNotThrow(() => env.data.access.forumAccessLevel);
   });
 
   it('access: уровень по хлебным крошкам и спискам форума', async () => {
