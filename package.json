@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node dev-server.js",
     "start": "webpack-dev-server",
+    "test": "node --test \"tests/**/*.test.js\"",
     "build": "babel hvss.js -o ./hvss.min.js"
   },
   "repository": {
@@ -30,6 +31,7 @@
     "babel-preset-es2015": "^6.24.1",
     "babel-preset-stage-0": "^6.24.1",
     "babel-preset-stage-2": "^6.24.1",
+    "jsdom": "^29.1.1",
     "selfsigned": "^2.4.1",
     "webpack": "^4.14.0",
     "webpack-cli": "^3.0.8",
