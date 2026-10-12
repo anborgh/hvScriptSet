@@ -76,6 +76,7 @@ function corsHeaders(contentType) {
     'Content-Type': contentType,
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Private-Network': 'true',
   };
 }
 

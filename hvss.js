@@ -2,12 +2,13 @@
 
 /**
  * hvScriptSet
- * Version: 1.1.3
+ * Version: 1.1.4
  * Author: Человек-Шаман
  * license: MIT
  *
  * Что нового:
- * 1. Фикс маски для ajax-сообщений.
+ * 1. Фикс маски с эмоджи
+ * 2. Защита хранилища масок.
  */
 
 const hvScriptSet = {
@@ -87,6 +88,8 @@ const hvScriptSet = {
     const topicMaskStorageKey = `hvssTopicMasksByTopicId:${window.UserID || 'guest'}`;
     const unlockedTopicMaskIcon = '<svg class="hv-topic-mask-icon hv-topic-mask-icon-unlocked" viewBox="0 0 97.891 97.89" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M71.957,2.539c-14.299,0-25.934,11.635-25.934,25.934v8.764H2c-0.529,0-1.039,0.211-1.414,0.586C0.211,38.2,0,38.708,0,39.239l0.041,54.115c0,1.104,0.896,1.998,2,1.998l0,0l57.916-0.041c1.104,0,1.998-0.896,1.998-2V39.197c0-0.533-0.213-1.045-0.592-1.42c-0.373-0.373-0.881-0.58-1.408-0.58c-0.004,0-0.01,0-0.016,0L56.98,37.22v-8.748c0-8.258,6.719-14.977,14.977-14.977s14.975,6.719,14.975,14.977v6.764c0,1.105,0.896,2,2,2h6.959c1.104,0,2-0.895,2-2v-6.764C97.89,14.174,86.256,2.539,71.957,2.539z"/></svg>';
     const lockedTopicMaskIcon = '<svg class="hv-topic-mask-icon hv-topic-mask-icon-locked" viewBox="0 0 94.666 94.666" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M76.923,35.406h-3.128v-8.945C73.795,11.871,61.924,0,47.333,0S20.871,11.871,20.871,26.461v8.945h-3.128c-1.104,0-2,0.896-2,2v55.26c0,1.104,0.896,2,2,2h59.18c1.104,0,2-0.896,2-2v-55.26C78.923,36.302,78.028,35.406,76.923,35.406zM47.333,11.181c8.426,0,15.281,6.854,15.281,15.28v8.945H32.052v-8.945C32.052,18.036,38.907,11.181,47.333,11.181z"/></svg>';
+
+    const MASK_SPLIT_KEY = '|splitKey|';
 
     let prevMasks = [];
 
@@ -933,32 +936,59 @@ const hvScriptSet = {
       hideMaskDialog();
     }
 
-    function persistMaskToUserStorage(mask, options = {}) {
-      const maskToSave = cloneMask(mask || {});
-      if (!Object.keys(maskToSave).length) {
-        return false;
-      }
+    function encodeMaskStorage(masks) {
+      return masks.join(MASK_SPLIT_KEY)
+        .replace(/%/g, '%25')
+        .replace(/[\u{10000}-\u{10FFFF}]/gu, ch => encodeURIComponent(ch));
+    }
 
-      if (Object.keys(prevMasks).length > 0) {
-        const existingIndex = hasMaskInStorage(prevMasks, maskToSave);
-        if (existingIndex === -1) {
-          if (prevMasks.length >= maskLimit) {
-            prevMasks.splice(0, 1);
+    function notifyMaskError(text, options = {}) {
+      if (options.updateUi) {
+        errorList.common = text;
+        showErrors();
+      } else {
+        $.jGrowl(text);
+      }
+    }
+
+    function fetchRemoteMasks() {
+      let result = { ok: false, masks: [] };
+      $.ajax({
+        async: false,
+        url: '/api.php',
+        data: { method: 'storage.get', key: 'maskListUser' },
+        success: function (res) {
+          if (!res) return;
+          if (res.error) {
+            if (String(res.error.code) === '404') result = { ok: true, masks: [] };
+            return;
           }
-        } else {
-          prevMasks.splice(existingIndex, 1);
+          const data = res.response && res.response.storage && res.response.storage.data;
+          if (!data) return;
+          result = { ok: true, masks: parseMaskStorage(data.maskListUser) };
         }
-      }
-      prevMasks.push(JSON.stringify(maskToSave));
+      });
+      return result;
+    }
 
-      const value = encodeURI(prevMasks.join('|splitKey|'));
+    function parseMaskStorage(raw) {
+      if (typeof raw !== 'string' || !raw) return [];
+      let data;
+      try {
+        data = decodeURI(raw).split(MASK_SPLIT_KEY);
+      } catch (e) {
+        data = raw.split(MASK_SPLIT_KEY);
+      }
+      return clearResponse(data.filter(Boolean));
+    }
+
+    function writeRemoteMasks(masks) {
+      const value = encodeMaskStorage(masks);
       if (value.length >= 65500) {
-        prevMasks.pop();
-        $.jGrowl("Хранилище масок переполнено, не могу сохранить ещё маску 😔");
-        return false;
+        return { ok: false, reason: 'overflow' };
       }
 
-      let success = false;
+      let ok = false;
       $.ajax({
         async: false,
         type: 'POST',
@@ -969,21 +999,55 @@ const hvScriptSet = {
           key: 'maskListUser',
           value,
         },
-        success: function () {
-          success = true;
-        },
-        error: function () {
-          if (options.updateUi) {
-            errorList.common = 'Ошибка сохранения, попробуй ещё раз.';
-            showErrors();
-          }
+        success: function (res) {
+          ok = !!res && !res.error && String(res.response) === '1';
         }
       });
+      return { ok, reason: ok ? '' : 'request' };
+    }
 
-      if (success && options.updateUi) {
+    function persistMaskToUserStorage(mask, options = {}) {
+      const maskToSave = cloneMask(mask || {});
+      if (!Object.keys(maskToSave).length) {
+        return false;
+      }
+
+      const maskString = JSON.stringify(maskToSave);
+      if (maskString.includes(MASK_SPLIT_KEY)) {
+        notifyMaskError('В маске есть служебная последовательность ' + MASK_SPLIT_KEY + ', её нельзя сохранить в список.', options);
+        return false;
+      }
+
+      const remote = fetchRemoteMasks();
+      if (!remote.ok) {
+        notifyMaskError('Не удалось загрузить список масок, маска не сохранена. Попробуй ещё раз.', options);
+        return false;
+      }
+
+      const nextMasks = remote.masks.slice();
+      const existingIndex = hasMaskInStorage(nextMasks, maskToSave);
+      if (existingIndex !== -1) {
+        nextMasks.splice(existingIndex, 1);
+      } else {
+        while (nextMasks.length >= maskLimit) {
+          nextMasks.shift();
+        }
+      }
+      nextMasks.push(maskString);
+
+      const result = writeRemoteMasks(nextMasks);
+      if (!result.ok) {
+        notifyMaskError(result.reason === 'overflow'
+          ? 'Хранилище масок переполнено, не могу сохранить ещё маску 😔'
+          : 'Ошибка сохранения, попробуй ещё раз.', options);
+        return false;
+      }
+
+      prevMasks = nextMasks;
+      if (options.updateUi) {
         getMaskStorage(prevMasks);
       }
-      return success;
+      return true;
     }
 
     function hasMaskInStorage(storage, item) {
@@ -1014,18 +1078,29 @@ const hvScriptSet = {
 
       if (!isConfirmed) return;
 
+      const target = prevMasks[mask];
+
       if ($(li).tipsy('getTitle')) {
         $(li).tipsy('hide');
       }
-      prevMasks.splice(mask, 1);
-      $.post('/api.php',
-        {
-          method: 'storage.set',
-          token: window.ForumAPITicket,
-          key: 'maskListUser',
-          value: encodeURI(prevMasks.join('|splitKey|'))
+
+      const remote = fetchRemoteMasks();
+      if (!remote.ok) {
+        $.jGrowl('Не удалось загрузить список масок, маска не удалена. Попробуй ещё раз.');
+        return;
+      }
+
+      const nextMasks = remote.masks.slice();
+      const index = nextMasks.indexOf(target);
+      if (index !== -1) {
+        nextMasks.splice(index, 1);
+        if (!writeRemoteMasks(nextMasks).ok) {
+          $.jGrowl('Ошибка удаления, попробуй ещё раз.');
+          return;
         }
-      );
+      }
+
+      prevMasks = nextMasks;
       getMaskStorage(prevMasks);
     }
 
@@ -1194,18 +1269,23 @@ const hvScriptSet = {
 
     function getTopicMaskStorage() {
       try {
-        return JSON.parse(localStorage.getItem(topicMaskStorageKey) || '{}');
+        const data = JSON.parse(localStorage.getItem(topicMaskStorageKey) || '{}');
+        return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
       } catch (e) {
         return {};
       }
     }
 
     function setTopicMaskStorage(data) {
-      if (!Object.keys(data).length) {
-        localStorage.removeItem(topicMaskStorageKey);
-        return;
+      try {
+        if (!Object.keys(data).length) {
+          localStorage.removeItem(topicMaskStorageKey);
+          return;
+        }
+        localStorage.setItem(topicMaskStorageKey, JSON.stringify(data));
+      } catch (e) {
+        console.error('hvScriptSet: Не удалось сохранить маску темы в localStorage.', e);
       }
-      localStorage.setItem(topicMaskStorageKey, JSON.stringify(data));
     }
 
     function getTopicMaskState(topicId) {
@@ -1846,28 +1926,13 @@ const hvScriptSet = {
     }
 
     function getStorageMask() {
-      $.ajax({
-        async: false,
-        url: '/api.php',
-        data: {
-          method: 'storage.get',
-          key: 'maskListUser'
-        },
-        success: function (result) {
-          const response = result.response;
-
-          if (response) {
-            let data;
-            try {
-              data = decodeURI(response.storage.data.maskListUser).split('|splitKey|');
-            } catch (e) {
-              data = response.storage.data.maskListUser.split('|splitKey|');
-            }
-            prevMasks = clearResponse(data);
-            getMaskStorage();
-          }
-        }
-      });
+      const remote = fetchRemoteMasks();
+      if (!remote.ok) {
+        console.error('hvScriptSet: Не удалось загрузить список масок.');
+        return;
+      }
+      prevMasks = remote.masks;
+      getMaskStorage(prevMasks);
     }
 
     function saveMaskSettings(localSettings) {
@@ -2054,7 +2119,7 @@ const hvScriptSet = {
     return;
   }
 
-  // менеджер может появиться позже (другой порядок script), но не позднее 15 секунд
+  // менеджер может появиться позже (другой порядок script)
   const timer = window.setInterval(function () {
     if (tryLoad()) {
       window.clearInterval(timer);
